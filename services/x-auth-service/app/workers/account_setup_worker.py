@@ -48,9 +48,26 @@ def run_account_setup_automation(
         from app.automation.selenium_oauth_automation import SeleniumOAuthAutomator
         from app.config import settings
         
-        # Get database path (project root directory)
-        db_path = Path(__file__).parent.parent.parent.parent / "twitter_accounts.db"
-        logger.info(f"Using database: {db_path}", extra={"job_id": job_id})
+        # Get database path (project root directory) - MUST BE ABSOLUTE
+        # __file__ is: services/x-auth-service/app/workers/account_setup_worker.py
+        # We need to go up 4 levels to reach project root
+        db_path = (Path(__file__).parent.parent.parent.parent.parent / "twitter_accounts.db").resolve()
+        print(f"\n{'='*80}")
+        print(f"[WORKER] Using database (absolute): {db_path}")
+        print(f"[WORKER] Database exists: {db_path.exists()}")
+        print(f"{'='*80}\n")
+        logger.info(f"[WORKER] Using database (absolute): {db_path}", extra={"job_id": job_id})
+        logger.info(f"[WORKER] Database exists: {db_path.exists()}", extra={"job_id": job_id})
+        
+        # DEBUG: Check if token is loaded
+        logger.info(
+            f"[DEBUG] GOLOGIN_TOKEN from settings: {settings.gologin_token[:50] if settings.gologin_token else 'EMPTY/NONE'}",
+            extra={"job_id": job_id}
+        )
+        logger.info(
+            f"[DEBUG] Settings dict: {settings.model_dump()}",
+            extra={"job_id": job_id}
+        )
         
         jobs_store[job_id]["progress"] = 20
 

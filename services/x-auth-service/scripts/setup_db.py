@@ -13,8 +13,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-# Paths
-DB_PATH = Path(__file__).parent.parent / "twitter_accounts.db"
+# Paths - ALL in project root
+DB_PATH = project_root / "twitter_accounts.db"  # FIXED: Use project root, not service folder
 SCHEMA_PATH = project_root / "MICROSERVICE_DB_SCHEMA.sql"
 CSV_PATH = project_root / "dump_x.csv"
 

@@ -142,6 +142,13 @@ class ConnectionPool:
     def _create_connection(self):
         """Create a new SQLite connection with thread safety enabled"""
         try:
+            print(f"\n{'='*80}")
+            print(f"[CONNECTION] Creating SQLite connection to: {self.db_path}")
+            print(f"[CONNECTION] Absolute path: {os.path.abspath(self.db_path)}")
+            print(f"[CONNECTION] File exists: {os.path.exists(self.db_path)}")
+            print(f"[CONNECTION] File size: {os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 'N/A'} bytes")
+            print(f"{'='*80}\n")
+            
             # Add check_same_thread=False to allow connections to be used across threads
             conn = sqlite3.connect(self.db_path, timeout=self.connection_timeout, check_same_thread=False)
             conn.execute("PRAGMA foreign_keys = ON")

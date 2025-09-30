@@ -1212,9 +1212,14 @@ class SeleniumOAuthAutomator:
     def _get_all_unauthorized_users(self) -> List[Dict[str, str]]:
         """Get all DISCONNECTED users from database that need login (matches UI logic)."""
         try:
+            print(f"\n{'='*80}")
+            print(f"[QUERY DEBUG] self.db_path = {self.db_path}")
+            print(f"[QUERY DEBUG] Type: {type(self.db_path)}")
+            print(f"{'='*80}\n")
+            self.logger.info(f"[DEBUG] Querying database at: {self.db_path}")
             with DBConnection(self.db_path) as (conn, cursor):
                 # Get accounts that are DISCONNECTED in UI (no valid tokens or expired tokens)
-                cursor.execute("""
+                query = """
                     SELECT account_name, custom_prompt, oauth2_access_token, oauth2_token_expires_at
                     FROM twitter_accounts 
                     WHERE custom_prompt LIKE 'CSV_PASSWORD:%'
@@ -1224,7 +1229,9 @@ class SeleniumOAuthAutomator:
                         OR datetime(oauth2_token_expires_at) <= datetime('now')
                     )
                     ORDER BY created_at 
-                """)
+                """
+                self.logger.info(f"[DEBUG] Executing query: {query}")
+                cursor.execute(query)
                 
                 users = []
                 for row in cursor.fetchall():

@@ -7,6 +7,18 @@ Uses Pydantic for settings validation and environment variable loading.
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from typing import Optional
+import os
+from pathlib import Path
+
+# Fix BOM encoding issue - manually load .env
+env_path = Path(__file__).parent.parent / '.env'
+if env_path.exists():
+    with open(env_path, 'r', encoding='utf-8-sig') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ[key.strip()] = value.strip()
 
 
 class Settings(BaseSettings):
