@@ -1,9 +1,12 @@
 """
 Account Setup Automation Worker
 
-This worker handles X (Twitter) account creation and setup using browser automation.
+This worker handles X (Twitter) account login using browser automation.
+Logs DISCONNECTED users into X and marks them as "Connected" in the database.
 """
 
+import os
+from pathlib import Path
 from datetime import datetime
 from app.models import AccountSetupRequest, JobStatus
 from shared.logging_config import get_logger
@@ -15,22 +18,22 @@ def run_account_setup_automation(
     job_id: str, request: AccountSetupRequest, jobs_store: dict
 ):
     """
-    Execute X account setup automation.
+    Execute X account login automation for DISCONNECTED users.
 
     This function:
-    1. Starts a GoLogin browser session
-    2. Navigates to X (Twitter)
-    3. Completes account creation/setup
-    4. Handles verification steps
-    5. Reports success/failure with detailed logs
+    1. Gets all DISCONNECTED users from the database
+    2. Starts GoLogin browser session
+    3. Logs each user into X (with 2FA handling)
+    4. Marks successfully logged-in users as "Connected"
+    5. Returns summary of login attempts
 
     Args:
         job_id: Unique job identifier
-        request: Account setup request
+        request: Account setup request (contains profile_id)
         jobs_store: Reference to jobs storage (temporary, will be DB)
     """
     logger.info(
-        "Starting account setup automation worker",
+        "Starting account setup automation worker (X login for DISCONNECTED users)",
         extra={"job_id": job_id, "profile_id": request.profile_id},
     )
 
@@ -41,61 +44,59 @@ def run_account_setup_automation(
         jobs_store[job_id]["updated_at"] = datetime.utcnow()
         jobs_store[job_id]["progress"] = 10
 
-        # TODO: Import and initialize your automation modules
-        # from app.automation.gologin_session_monitor import GoLoginSessionMonitor
-        # from app.automation.browser_startup_handler import BrowserStartupHandler
-
-        # TODO: Step 1 - Start GoLogin session
-        logger.info("Step 1: Starting GoLogin session", extra={"job_id": job_id})
-        # monitor = GoLoginSessionMonitor()
-        # session = monitor.start_session(request.profile_id)
+        # Import automation module and config
+        from app.automation.selenium_oauth_automation import SeleniumOAuthAutomator
+        from app.config import settings
+        
+        # Get database path (project root directory)
+        db_path = Path(__file__).parent.parent.parent.parent / "twitter_accounts.db"
+        logger.info(f"Using database: {db_path}", extra={"job_id": job_id})
+        
         jobs_store[job_id]["progress"] = 20
 
-        # TODO: Step 2 - Navigate to X (Twitter)
-        logger.info("Step 2: Navigating to X.com", extra={"job_id": job_id})
-        # driver = session.driver
-        # driver.get("https://x.com")
+        # Initialize automator with token from config
+        logger.info("Initializing OAuth automator", extra={"job_id": job_id})
+        automator = SeleniumOAuthAutomator(
+            db_path=str(db_path),
+            gologin_token=settings.gologin_token
+        )
         jobs_store[job_id]["progress"] = 30
 
-        # TODO: Step 3 - Start account creation flow
-        logger.info("Step 3: Starting account creation", extra={"job_id": job_id})
-        # Click "Sign up" or navigate to signup page
-        jobs_store[job_id]["progress"] = 40
+        # Run bulk user login automation
+        logger.info(
+            "Starting bulk user login for DISCONNECTED accounts",
+            extra={"job_id": job_id, "profile_id": request.profile_id}
+        )
+        result = automator.automate_bulk_user_login(profile_id=request.profile_id)
+        jobs_store[job_id]["progress"] = 90
 
-        # TODO: Step 4 - Fill in account details
-        logger.info("Step 4: Filling account details", extra={"job_id": job_id})
-        # Fill username, email, password fields
-        # driver.find_element(By.NAME, "username").send_keys(request.username)
-        # driver.find_element(By.NAME, "email").send_keys(request.email)
-        # driver.find_element(By.NAME, "password").send_keys(request.password)
-        jobs_store[job_id]["progress"] = 60
-
-        # TODO: Step 5 - Handle verification (email, phone, captcha)
-        logger.info("Step 5: Handling verification steps", extra={"job_id": job_id})
-        # Handle email verification, phone verification, captchas, etc.
-        jobs_store[job_id]["progress"] = 80
-
-        # TODO: Step 6 - Confirm account creation and cleanup
-        logger.info("Step 6: Confirming account creation", extra={"job_id": job_id})
-        # Verify account was created successfully
-        # Log any errors encountered
-        # Close browser session
-        jobs_store[job_id]["progress"] = 100
+        # Check result
+        if not result.get('success'):
+            raise Exception(result.get('error', 'Unknown error during bulk login'))
 
         # Mark job as completed
         jobs_store[job_id]["status"] = JobStatus.COMPLETED
         jobs_store[job_id]["completed_at"] = datetime.utcnow()
         jobs_store[job_id]["updated_at"] = datetime.utcnow()
+        jobs_store[job_id]["progress"] = 100
         jobs_store[job_id]["result"] = {
             "success": True,
-            "message": "Account setup completed successfully",
+            "message": f"Account setup completed: {result['successful_logins']}/{result['total_users']} users logged in",
             "profile_id": request.profile_id,
-            "username": request.username,
+            "total_users": result['total_users'],
+            "successful_logins": result['successful_logins'],
+            "failed_logins": result['failed_logins'],
+            "login_results": result.get('login_results', []),
         }
 
         logger.info(
             "Account setup automation completed successfully",
-            extra={"job_id": job_id, "profile_id": request.profile_id},
+            extra={
+                "job_id": job_id,
+                "profile_id": request.profile_id,
+                "successful_logins": result['successful_logins'],
+                "failed_logins": result['failed_logins'],
+            },
         )
 
     except Exception as e:
@@ -118,5 +119,4 @@ def run_account_setup_automation(
             "success": False,
             "error": str(e),
             "profile_id": request.profile_id,
-            "username": request.username,
         }

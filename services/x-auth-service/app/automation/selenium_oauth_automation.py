@@ -30,8 +30,13 @@ from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from gologin import GoLogin
 
-from fix_db_connections import DBConnection
-from gologin_manager import GoLoginManager
+import sys
+from pathlib import Path
+# Add project root to path to access shared modules
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from shared.db_connections import DBConnection
 
 # Note: X login credentials should be stored in a table like:
 # CREATE TABLE x_login_credentials (
@@ -42,8 +47,10 @@ from gologin_manager import GoLoginManager
 #     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 # );
 
-# Load environment variables
-load_dotenv()
+# Load environment variables from project root
+from pathlib import Path as EnvPath
+env_path = EnvPath(__file__).parent.parent.parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 
 class SeleniumOAuthAutomator:
@@ -52,14 +59,14 @@ class SeleniumOAuthAutomator:
     Assumes GoLogin profiles are already logged into X
     """
     
-    def __init__(self, db_path: str = 'twitter_accounts.db'):
+    def __init__(self, db_path: str = 'twitter_accounts.db', gologin_token: Optional[str] = None):
         self.db_path = db_path
         self.logger = logging.getLogger(self.__class__.__name__)
         
         # GoLogin configuration
-        self.gologin_token = os.getenv('GOLOGIN_TOKEN')
+        self.gologin_token = gologin_token or os.getenv('GOLOGIN_TOKEN')
         if not self.gologin_token:
-            raise ValueError("GOLOGIN_TOKEN environment variable required")
+            raise ValueError("GOLOGIN_TOKEN must be provided as parameter or environment variable")
         
         # Check for tunnel URL (required for proxy bypass)
         self.tunnel_url = os.getenv('AIOTT_TUNNEL_URL')

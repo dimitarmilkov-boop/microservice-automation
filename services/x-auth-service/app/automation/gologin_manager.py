@@ -18,7 +18,13 @@ from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, WebDriverException
 
-from fix_db_connections import DBConnection
+import sys
+from pathlib import Path
+# Add project root to path to access shared modules
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from shared.db_connections import DBConnection
 
 # Import browser startup handler
 try:

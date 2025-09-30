@@ -26,8 +26,13 @@ import base64
 # Add the current directory to path to import local modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from gologin_manager_enhanced import EnhancedGoLoginManager
-from fix_db_connections import DBConnection
+import sys
+from pathlib import Path
+# Add project root to path to access shared modules
+project_root = Path(__file__).parent.parent.parent.parent
+sys.path.insert(0, str(project_root))
+
+from shared.db_connections import DBConnection
 
 class GoLoginSessionMonitor:
     """Enhanced monitoring system for GoLogin cloud sessions."""

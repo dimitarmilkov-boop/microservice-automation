@@ -24,22 +24,16 @@ class JobStatus(str, Enum):
 
 
 class XOAuthRequest(BaseModel):
-    """Request model for X OAuth automation."""
+    """Request model for X OAuth automation - Browser clicking service."""
 
-    profile_id: str = Field(..., description="GoLogin profile ID")
-    username: str = Field(..., description="X (Twitter) username or email")
-    password: Optional[str] = Field(None, description="X password (if needed)")
-    authorization_url: str = Field(
-        default="https://aiott.com/oauth",
-        description="OAuth authorization URL to navigate to",
-    )
+    profile_name: str = Field(..., description="GoLogin profile name (e.g., '1234')")
+    api_app: str = Field(..., description="API app to select from dropdown (e.g., 'AIOTT1')")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "profile_id": "686e7a83d44e36ee50584179",
-                "username": "user@example.com",
-                "authorization_url": "https://aiott.com/oauth",
+                "profile_name": "1234",
+                "api_app": "AIOTT1",
             }
         }
 

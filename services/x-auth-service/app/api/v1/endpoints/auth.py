@@ -12,7 +12,7 @@ from app.models import (
     JobStatus,
 )
 from shared.logging_config import get_logger
-from app.workers.x_oauth_worker import run_x_oauth_automation
+from app.workers.x_worker import run_x_oauth_automation
 from app.workers.account_setup_worker import run_account_setup_automation
 
 logger = get_logger(__name__)
@@ -45,9 +45,8 @@ async def x_oauth_automation(
     logger.info(
         "X OAuth automation requested",
         extra={
-            "profile_id": request.profile_id,
-            "username": request.username,
-            "authorization_url": request.authorization_url,
+            "profile_name": request.profile_name,
+            "api_app": request.api_app,
         },
     )
 
@@ -71,7 +70,7 @@ async def x_oauth_automation(
 
     logger.info(
         "X OAuth job created",
-        extra={"job_id": job_id, "profile_id": request.profile_id},
+        extra={"job_id": job_id, "profile_name": request.profile_name},
     )
 
     return JobResponse(
@@ -129,8 +128,8 @@ async def account_setup_automation(
 
     jobs_store[job_id] = job_data
 
-    # TODO: Add background task to run automation
-    # background_tasks.add_task(run_account_setup_worker, job_id, request)
+    # Add background task to run automation
+    background_tasks.add_task(run_account_setup_automation, job_id, request, jobs_store)
 
     logger.info(
         "Account setup job created",
