@@ -10,6 +10,7 @@ import os
 import socket
 import base64
 import json
+import shutil
 from typing import Dict, Any, Optional, List
 from urllib.parse import urlencode, urlparse, parse_qs
 from dotenv import load_dotenv
@@ -29,6 +30,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
 from gologin import GoLogin
+from selenium.common.exceptions import TimeoutException
 
 import sys
 from pathlib import Path
@@ -196,19 +198,207 @@ class SeleniumOAuthAutomator:
     
     def automate_oauth_for_profile(self, profile_id: str, api_app: str, login_only: bool = False) -> Dict[str, Any]:
         """
-        FIXED: Now defaults to LOGIN ONLY - NO OAuth unless explicitly requested
-        
-        The user explicitly said: AFTER LOGIN WE DO NOT NEED AUTHORIZATION
-        So this method now redirects to bulk login automation
+        Orchestrate the full OAuth authorization flow for a profile.
         """
-        self.logger.info(f"REDIRECTING TO BULK LOGIN - No OAuth expected after login!")
+        self.logger.info("OAUTH AUTHORIZATION FLOW STARTING", extra={"profile_id": profile_id, "api_app": api_app})
         
-        # Route to bulk login automation instead of OAuth
-        return self.automate_bulk_user_login(profile_id)
+        if login_only:
+            self.logger.info("Login-only flag detected, delegating to bulk login flow")
+            return self.automate_bulk_user_login(profile_id)
+
+        job_id = f"oauth_job_{int(time.time())}"
+        log_prefix = f"[JOB {job_id}]"
+
+        session_info = None
+        try:
+            self.logger.info(f"{log_prefix} STEP 1: Generate OAuth URL")
+            oauth_info = self._generate_oauth_url(profile_id, api_app)
+            if not oauth_info.get('success'):
+                error = oauth_info.get('error', 'Unknown error generating OAuth URL')
+                self.logger.error(f"{log_prefix} FAILED to generate OAuth URL", extra={"error": error})
+                return {'success': False, 'error': error}
+
+            oauth_url = oauth_info['oauth_url']
+            state = oauth_info['state']
+            self.logger.info(
+                f"{log_prefix} OAuth URL ready",
+                extra={
+                    "profile_id": profile_id,
+                    "api_app": api_app,
+                    "oauth_url": oauth_url,
+                    "state": state,
+                },
+            )
+
+            self.logger.info(f"{log_prefix} STEP 2: Launching GoLogin session")
+            session_info = self._start_gologin_session(profile_id)
+            if not session_info:
+                error = "Failed to start GoLogin session"
+                self.logger.error(f"{log_prefix} {error}")
+                return {'success': False, 'error': error}
+
+            debugger_address = session_info['debugger_address']
+            driver = session_info['driver']
+            screenshots = session_info['screenshots']
+
+            self.logger.info(f"{log_prefix} STEP 3: Navigating to OAuth URL", extra={"url": oauth_url})
+            driver.get(oauth_url)
+            time.sleep(3)
+            self._log_browser_state(driver, f"{log_prefix} OAuth page loaded")
+
+            self._capture_stage_screenshot(driver, screenshots, "oauth_page_loaded")
+
+            self.logger.info(f"{log_prefix} STEP 4: Detecting page state")
+            page_state = self._detect_page_state(driver)
+            self.logger.info(f"{log_prefix} Detected page state", extra={"state": page_state})
+
+            login_attempts = 0
+            max_login_attempts = 2
+
+            while page_state == "login_form" and login_attempts < max_login_attempts:
+                login_attempts += 1
+                self.logger.warning(
+                    f"{log_prefix} Login required - attempt {login_attempts}/{max_login_attempts}"
+                )
+                credentials = self._get_x_credentials_for_profile(profile_id)
+                if not credentials:
+                    error = "No login credentials found for profile"
+                    self.logger.error(f"{log_prefix} {error}")
+                    return {'success': False, 'error': error}
+
+                self.logger.info(
+                    f"{log_prefix} Retrieved credentials",
+                    extra={"username": credentials.get("username"), "has_2fa": bool(credentials.get("2fa_secret"))},
+                )
+
+                login_success = self._attempt_x_login_with_user_data(driver, credentials)
+                if not login_success:
+                    self._capture_stage_screenshot(driver, screenshots, f"login_failed_attempt_{login_attempts}", is_error=True)
+                    error = "Automatic login failed"
+                    self.logger.error(f"{log_prefix} {error}")
+                    return {'success': False, 'error': error}
+
+                self.logger.info(f"{log_prefix} Login attempt succeeded", extra={"attempt": login_attempts})
+                self._capture_stage_screenshot(driver, screenshots, f"after_login_attempt_{login_attempts}")
+
+                if not self._detect_home_feed(driver):
+                    self.logger.warning(f"{log_prefix} Home feed not detected post-login", extra={"attempt": login_attempts})
+                else:
+                    self.logger.info(f"{log_prefix} Home feed detected post-login", extra={"attempt": login_attempts})
+
+                self.logger.info(f"{log_prefix} Re-opening OAuth URL after login")
+                driver.get(oauth_url)
+                time.sleep(3)
+                page_state = self._detect_page_state(driver)
+                self.logger.info(f"{log_prefix} Page state after login", extra={"state": page_state})
+
+            if page_state == "login_form":
+                error = "Reached max login attempts without reaching authorization form"
+                self.logger.error(f"{log_prefix} {error}")
+                self._capture_stage_screenshot(driver, screenshots, "login_attempts_exceeded", is_error=True)
+                return {'success': False, 'error': error}
+
+            self.logger.info(f"{log_prefix} STEP 5: Handling authorization")
+            auth_result = self._handle_oauth_authorization(driver, profile_id)
+            if not auth_result.get('success'):
+                error = auth_result.get('error', 'Authorization handling failed')
+                self._capture_stage_screenshot(driver, screenshots, "authorization_failed", is_error=True)
+                return {'success': False, 'error': error}
+
+            self._capture_stage_screenshot(driver, screenshots, "authorize_clicked")
+
+            self.logger.info(f"{log_prefix} STEP 6: Waiting for callback")
+            callback_result = self._handle_oauth_callback(driver, state, api_app, profile_id)
+            if not callback_result.get('success'):
+                error = callback_result.get('error', 'Callback handling failed')
+                self._capture_stage_screenshot(driver, screenshots, "callback_failed", is_error=True)
+                return {'success': False, 'error': error}
+
+            self._capture_stage_screenshot(driver, screenshots, "callback_detected")
+
+            self.logger.info(f"{log_prefix} OAUTH AUTHORIZATION SUCCESSFUL")
+            return {
+                'success': True,
+                'state': state,
+                'oauth_result': callback_result,
+                'screenshots': screenshots
+            }
+
+        except Exception as e:
+            error = str(e)
+            self.logger.error(f"{log_prefix} OAuth automation failed", extra={"error": error}, exc_info=True)
+            return {'success': False, 'error': error}
+        finally:
+            driver_obj = session_info['driver'] if session_info else None
+            gl_obj = session_info['gl'] if session_info else None
+            tmpdir = session_info['tmpdir'] if session_info else None
+            self._cleanup(driver_obj, gl_obj)
+            if tmpdir:
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                self.logger.info("Temp directory cleaned", extra={"tmpdir": tmpdir})
+
+    def _start_gologin_session(self, profile_id: str) -> Optional[Dict[str, Any]]:
+        """Start GoLogin profile and attach Selenium."""
+        try:
+            import tempfile
+
+            tmpdir = tempfile.mkdtemp(prefix="gologin_oauth_")
+            self.logger.info("Created temp directory for GoLogin", extra={"tmpdir": tmpdir})
+
+            gl = GoLogin({
+                "token": self.gologin_token,
+                "profile_id": profile_id,
+                "tmpdir": tmpdir,
+            })
+
+            debugger_address = gl.start()
+            if not debugger_address:
+                self.logger.error("Failed to start GoLogin session")
+                return None
+
+            driver = self._connect_selenium(debugger_address)
+            if not driver:
+                gl.stop()
+                shutil.rmtree(tmpdir, ignore_errors=True)
+                return None
+
+            return {
+                'gl': gl,
+                'driver': driver,
+                'tmpdir': tmpdir,
+                'debugger_address': debugger_address,
+                'screenshots': []
+            }
+
+        except Exception as e:
+            self.logger.error(f"Error starting GoLogin session: {e}")
+            if 'gl' in locals():
+                try:
+                    gl.stop()
+                except Exception:
+                    pass
+            if 'tmpdir' in locals():
+                shutil.rmtree(tmpdir, ignore_errors=True)
+            return None
+
+    def _capture_stage_screenshot(self, driver: webdriver.Chrome, screenshots: List[str], stage: str, is_error: bool = False):
+        try:
+            os.makedirs('logs/screenshots', exist_ok=True)
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            suffix = "error" if is_error else "stage"
+            filename = f"logs/screenshots/{suffix}_{stage}_{timestamp}.png"
+            driver.save_screenshot(filename)
+            screenshots.append(filename)
+            self.logger.info(f"Screenshot captured", extra={"stage": stage, "file": filename})
+        except Exception as e:
+            self.logger.warning(f"Failed to capture screenshot for stage {stage}: {e}")
     
     def _connect_selenium(self, debugger_address: str) -> Optional[webdriver.Chrome]:
         """Connect Selenium to the GoLogin browser"""
         try:
+            print(f"\n{'='*80}")
+            print(f"[SELENIUM] Attempting connection to: {debugger_address}")
+            print(f"{'='*80}\n")
             self.logger.info(f"ATTEMPTING SELENIUM CONNECTION TO: {debugger_address}")
             
             chrome_options = Options()
@@ -220,34 +410,40 @@ class SeleniumOAuthAutomator:
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--remote-debugging-port=0")  # Let Chrome choose port
             
-            # Use the specific ChromeDriver version that matches GoLogin
-            service = Service(ChromeDriverManager(driver_version="133.0.6943.54").install())
+            # Always use webdriver-manager to fetch a matching 64-bit ChromeDriver
+            os.environ.setdefault("WDM_ARCHITECTURE", "64")
+            chromedriver_path = ChromeDriverManager().install()
+            print(f"[SELENIUM] Using ChromeDriver: {chromedriver_path}")
+            print(f"[SELENIUM] ChromeDriver exists: {os.path.exists(chromedriver_path)}")
+            service = Service(chromedriver_path)
             
-            # Set shorter timeout to fail fast if connection issues
+            print(f"[SELENIUM] Creating Chrome driver with debugger: {debugger_address}")
             driver = webdriver.Chrome(service=service, options=chrome_options)
             
             # Test the connection with a simple command
+            print(f"[SELENIUM] Testing connection...")
             driver.get("chrome://version/")
+            print(f"[SELENIUM] ✓ CONNECTED SUCCESSFULLY!")
             self.logger.info(f"SELENIUM CONNECTED SUCCESSFULLY to {debugger_address}")
             return driver
             
         except Exception as e:
+            print(f"[SELENIUM] ✗ CONNECTION FAILED: {e}")
             self.logger.error(f"SELENIUM CONNECTION FAILED to {debugger_address}: {e}")
             
-            # Try alternative connection method
             try:
-                self.logger.info("Attempting alternative Selenium connection...")
+                self.logger.info("Attempting alternative Selenium connection with webdriver-manager (64-bit)...")
                 chrome_options = Options()
                 chrome_options.add_experimental_option("debuggerAddress", debugger_address)
                 chrome_options.add_argument("--disable-web-security")
                 chrome_options.add_argument("--disable-features=VizDisplayCompositor")
                 
-                service = Service(ChromeDriverManager().install())  # Use latest driver
+                os.environ.setdefault("WDM_ARCHITECTURE", "64")
+                service = Service(ChromeDriverManager().install())
                 driver = webdriver.Chrome(service=service, options=chrome_options)
                 driver.get("chrome://version/")
                 self.logger.info("ALTERNATIVE SELENIUM CONNECTION SUCCESSFUL")
                 return driver
-                
             except Exception as e2:
                 self.logger.error(f"ALTERNATIVE SELENIUM CONNECTION ALSO FAILED: {e2}")
                 return None
@@ -270,8 +466,8 @@ class SeleniumOAuthAutomator:
     def _generate_oauth_url(self, profile_id: str, api_app: str) -> Dict[str, Any]:
         """Generate the X OAuth authorization URL"""
         try:
-            # Determine callback URL
-            base_url = self.tunnel_url or f"http://{self._get_host_ip()}:5005"
+            base_url = self.tunnel_url or os.getenv("AIOTT_BASE_URL") or "https://aiott.pro"
+            base_url = base_url.rstrip("/")
             
             # Get API configuration from database
             with DBConnection(self.db_path) as (conn, cursor):
@@ -291,7 +487,12 @@ class SeleniumOAuthAutomator:
                     db_callback_url = "api/oauth/callback"
                     self.logger.warning(f"No callback_url in database for {api_app}, using default")
                 
-                callback_url = f"{base_url}/{db_callback_url.lstrip('/')}"
+                if db_callback_url.startswith("http"):
+                    callback_url = db_callback_url
+                else:
+                    callback_url = f"{base_url}/{db_callback_url.lstrip('/')}"
+                if api_app:
+                    callback_url = callback_url.rstrip('/') + f"/{api_app}"
                 self.logger.info(f"Using callback URL: {callback_url}")
             
             # Generate OAuth parameters
@@ -328,7 +529,11 @@ class SeleniumOAuthAutomator:
             return {
                 'success': True,
                 'oauth_url': oauth_url,
-                'state': state
+                'state': state,
+                'code_verifier': code_verifier,
+                'code_challenge': code_challenge,
+                'callback_url': callback_url,
+                'client_id': client_id
             }
             
         except Exception as e:
@@ -902,6 +1107,37 @@ class SeleniumOAuthAutomator:
                     
         except Exception as e:
             self.logger.warning(f"Could not analyze page: {e}")
+
+    def _log_browser_state(self, driver: webdriver.Chrome, context: str, extra: Optional[Dict[str, Any]] = None):
+        """Log the current browser state to help debug automation flow."""
+        try:
+            url = driver.current_url
+        except Exception as e:
+            url = f"<unavailable: {e}>"
+
+        try:
+            title = driver.title
+            safe_title = title.encode('ascii', 'replace').decode('ascii')
+        except Exception as e:
+            safe_title = f"<unavailable: {e}>"
+
+        try:
+            cookie_count = len(driver.get_cookies())
+        except Exception as e:
+            cookie_count = f"<unavailable: {e}>"
+
+        try:
+            page_state = self._detect_page_state(driver)
+        except Exception as e:
+            page_state = f"<unavailable: {e}>"
+
+        self.logger.info(
+            f"[BROWSER STATE] {context} | URL: {url} | Title: {safe_title} | Cookies: {cookie_count} | Page State: {page_state}"
+        )
+
+        if extra:
+            for key, value in extra.items():
+                self.logger.info(f"[BROWSER STATE] {context} | {key}: {value}")
     
     def _detect_page_language(self, driver: webdriver.Chrome) -> str:
         """
@@ -1267,10 +1503,49 @@ class SeleniumOAuthAutomator:
             # For sequential processing: Always use same tab, just navigate to login
             # This ensures each user completes fully before next user starts
             self.logger.info(f"Processing {username} sequentially (waiting for completion)")
+            self._log_browser_state(driver, f"Initial state before processing {username}")
             
-            # Navigate to X login (clears any previous session)
+            # CRITICAL: Log out previous user first to avoid session conflicts!
+            if user_index > 1:  # Not the first user
+                self.logger.info(f"Logging out previous user before {username}...")
+                try:
+                    # Method 1: Clear all cookies for x.com
+                    driver.delete_all_cookies()
+                    self.logger.info("Cleared all cookies")
+                    time.sleep(2)
+                    self._log_browser_state(driver, f"Post-cookie-clear state before {username}")
+                    
+                    # Method 2: Try explicit logout (in case cookies aren't enough)
+                    try:
+                        driver.get("https://x.com/logout")
+                        time.sleep(1)
+                        self._log_browser_state(driver, f"Visited logout page before {username}")
+                        # Confirm logout if button appears
+                        logout_confirm_selectors = [
+                            '[data-testid="confirmationSheetConfirm"]',
+                            'div[role="button"]:has-text("Log out")',
+                            'div[role="button"]:has-text("Wyloguj")'
+                        ]
+                        for selector in logout_confirm_selectors:
+                            try:
+                                confirm_btn = driver.find_element(By.CSS_SELECTOR, selector)
+                                confirm_btn.click()
+                                self.logger.info("Clicked logout confirmation")
+                                break
+                            except:
+                                continue
+                        time.sleep(2)
+                    except Exception as logout_error:
+                        self.logger.warning(f"Explicit logout failed (might be OK): {logout_error}")
+                        
+                except Exception as e:
+                    self.logger.warning(f"Session cleanup failed: {e}")
+            
+            # Navigate to X login (fresh state)
+            self.logger.info(f"Navigating to login page for {username}...")
             driver.get("https://x.com/i/flow/login")
             time.sleep(3)
+            self._log_browser_state(driver, f"Loaded login page for {username}")
             
             # Login process
             success = self._attempt_x_login_with_user_data(driver, user)
@@ -1279,6 +1554,7 @@ class SeleniumOAuthAutomator:
                 # Verify home feed
                 if self._detect_home_feed(driver):
                     self.logger.info(f"SUCCESS [{user_index}/{total_users}] {username} - LOGIN SUCCESS")
+                    self._log_browser_state(driver, f"Successful login for {username}")
                     return {
                         'success': True,
                         'username': username,
@@ -1293,6 +1569,7 @@ class SeleniumOAuthAutomator:
                     }
             else:
                 self.logger.error(f"FAILED [{user_index}/{total_users}] {username} - LOGIN FAILED")
+                self._log_browser_state(driver, f"Login failed for {username}")
                 return {
                     'success': False,
                     'username': username,
@@ -1315,6 +1592,7 @@ class SeleniumOAuthAutomator:
             has_2fa = '2fa_secret' in user
             
             self.logger.info(f"Attempting login for {username}" + (" (with 2FA)" if has_2fa else ""))
+            self._log_browser_state(driver, f"Pre-login analysis for {username}")
             
             # Detect current page state
             page_state = self._detect_page_state(driver)
@@ -1338,25 +1616,31 @@ class SeleniumOAuthAutomator:
             username_selectors = [
                 'input[autocomplete="username"]',
                 'input[name="text"]', 
+                'input[data-testid="ocfEnterTextTextInput"]',
                 'input[placeholder*="email"]',
                 'input[placeholder*="username"]',
-                'input[type="text"]',
-                'input[type="email"]'
+                'input[type="email"]',
+                'input[type="text"]'
             ]
             
+            wait = WebDriverWait(driver, 20)
             for selector in username_selectors:
                 try:
-                    username_field = driver.find_element(By.CSS_SELECTOR, selector)
-                    if username_field.is_displayed():
-                        username_field.clear()
-                        time.sleep(0.5)  # Small delay after clearing
-                        username_field.send_keys(username)
-                        time.sleep(2)  # Slower delay after typing
-                        self.logger.info(f"Filled username: {username} using selector: {selector}")
-                        username_filled = True
-                        break
-                except Exception:
-                    continue
+                    username_field = wait.until(
+                        EC.visibility_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+                    username_field.clear()
+                    time.sleep(0.5)
+                    username_field.send_keys(username)
+                    time.sleep(1.5)
+                    self.logger.info(f"Filled username: {username} using selector: {selector}")
+                    self._log_browser_state(driver, f"Entered username for {username}")
+                    username_filled = True
+                    break
+                except TimeoutException:
+                    self.logger.debug(f"Username selector timed out: {selector}")
+                except Exception as selector_error:
+                    self.logger.debug(f"Username selector failed ({selector}): {selector_error}")
             
             if not username_filled:
                 self.logger.warning(f"Could not find username field for {username} - checking if already logged in")
@@ -1397,6 +1681,7 @@ class SeleniumOAuthAutomator:
                     next_button.click()
                     time.sleep(3)  # Slower delay after clicking Next
                     self.logger.info(f"Successfully clicked Next button (language: {page_lang})")
+                    self._log_browser_state(driver, f"After clicking Next for {username}")
                 else:
                     self.logger.warning("Could not find Next button - checking if we can proceed directly to password")
                     time.sleep(2)  # Give some time even if Next button not found
@@ -1409,22 +1694,27 @@ class SeleniumOAuthAutomator:
             password_selectors = [
                 'input[type="password"]',
                 'input[name="password"]',
-                'input[autocomplete="current-password"]'
+                'input[autocomplete="current-password"]',
+                'input[data-testid="ocfEnterTextTextInput"]'
             ]
             
             for selector in password_selectors:
                 try:
-                    password_field = driver.find_element(By.CSS_SELECTOR, selector)
-                    if password_field.is_displayed():
-                        password_field.clear()
-                        time.sleep(0.5)  # Small delay after clearing
-                        password_field.send_keys(password)
-                        time.sleep(2)  # Slower delay after typing password
-                        self.logger.info(f"Filled password using selector: {selector}")
-                        password_filled = True
-                        break
-                except Exception:
-                    continue
+                    password_field = wait.until(
+                        EC.visibility_of_element_located((By.CSS_SELECTOR, selector))
+                    )
+                    password_field.clear()
+                    time.sleep(0.5)
+                    password_field.send_keys(password)
+                    time.sleep(1.5)
+                    self.logger.info(f"Filled password using selector: {selector}")
+                    self._log_browser_state(driver, f"Entered password for {username}")
+                    password_filled = True
+                    break
+                except TimeoutException:
+                    self.logger.debug(f"Password selector timed out: {selector}")
+                except Exception as selector_error:
+                    self.logger.debug(f"Password selector failed ({selector}): {selector_error}")
             
             if not password_filled:
                 self.logger.warning(f"Could not find password field for {username} - checking if already logged in")
@@ -1458,6 +1748,7 @@ class SeleniumOAuthAutomator:
                     login_button.click()
                     time.sleep(4)  # Slower delay after clicking Login
                     self.logger.info(f"Successfully clicked Login button (language: {page_lang})")
+                    self._log_browser_state(driver, f"After clicking Login for {username}")
                 else:
                     self.logger.warning("Could not find Login button - checking if already logged in")
                     current_state = self._detect_page_state(driver)
@@ -1491,13 +1782,16 @@ class SeleniumOAuthAutomator:
             self.logger.info(f"Final page state: {final_state}")
             
             if final_state == "already_logged_in":
+                self._log_browser_state(driver, f"Final state after login for {username}")
                 return self._detect_home_feed(driver)
             else:
                 self.logger.warning(f"Login completed but final state is '{final_state}' - checking home feed anyway")
+                self._log_browser_state(driver, f"Unexpected final state for {username}", {'final_state': final_state})
                 return self._detect_home_feed(driver)
             
         except Exception as e:
             self.logger.error(f"Error in login attempt: {e}")
+            self._log_browser_state(driver, f"Exception during login for {username}", {'error': str(e)})
             return False
     
     def _detect_home_feed(self, driver: webdriver.Chrome) -> bool:

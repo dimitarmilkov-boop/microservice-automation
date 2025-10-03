@@ -6,9 +6,9 @@ from fastapi import APIRouter, HTTPException, status
 from app.models import JobStatusResponse
 from shared.logging_config import get_logger
 
-# Import the in-memory jobs store from auth endpoint
+# Reference jobs_store via the auth module to avoid stale copies after reloads
 # TODO: Replace with proper database
-from app.api.v1.endpoints.auth import jobs_store
+import app.api.v1.endpoints.auth as auth
 
 logger = get_logger(__name__)
 router = APIRouter()
@@ -30,8 +30,8 @@ async def get_job_status(job_id: str):
     """
     logger.info("Job status requested", extra={"job_id": job_id})
 
-    # Get job from store
-    job_data = jobs_store.get(job_id)
+    # Get job from store (always reference current module state)
+    job_data = getattr(auth, "jobs_store", {}).get(job_id)
 
     if not job_data:
         logger.warning("Job not found", extra={"job_id": job_id})
@@ -72,8 +72,8 @@ async def cancel_job(job_id: str):
     """
     logger.info("Job cancellation requested", extra={"job_id": job_id})
 
-    # Get job from store
-    job_data = jobs_store.get(job_id)
+    # Get job from store (always reference current module state)
+    job_data = getattr(auth, "jobs_store", {}).get(job_id)
 
     if not job_data:
         logger.warning("Job not found", extra={"job_id": job_id})

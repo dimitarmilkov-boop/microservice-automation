@@ -42,17 +42,23 @@ class AccountSetupRequest(BaseModel):
     """Request model for X account setup automation."""
 
     profile_id: str = Field(..., description="GoLogin profile ID")
-    username: str = Field(..., description="X (Twitter) username")
-    password: str = Field(..., description="X password")
-    email: Optional[str] = Field(None, description="Email address")
-    phone: Optional[str] = Field(None, description="Phone number")
+    username: Optional[str] = Field(
+        None,
+        description="(Optional) X username - ignored in bulk login flow",
+    )
+    password: Optional[str] = Field(
+        None,
+        description="(Optional) X password - ignored in bulk login flow",
+    )
+    email: Optional[str] = Field(None, description="(Optional) Email address")
+    phone: Optional[str] = Field(None, description="(Optional) Phone number")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "profile_id": "686e7a83d44e36ee50584179",
-                "username": "testuser",
-                "password": "SecurePass123!",
+                "username": "optional",
+                "password": "optional",
                 "email": "user@example.com",
             }
         }
