@@ -204,7 +204,7 @@ class SeleniumOAuthAutomator:
         
         if login_only:
             self.logger.info("Login-only flag detected, delegating to bulk login flow")
-        return self.automate_bulk_user_login(profile_id)
+            return self.automate_bulk_user_login(profile_id)
 
         job_id = f"oauth_job_{int(time.time())}"
         log_prefix = f"[JOB {job_id}]"
@@ -414,8 +414,8 @@ class SeleniumOAuthAutomator:
             os.environ["WDM_ARCH"] = "64"
             chromedriver_path = ChromeDriverManager(driver_version="133.0.6943.54").install()
             print(f"[SELENIUM] Raw path from ChromeDriverManager: {chromedriver_path}")
-
-            # webdriver-manager sometimes returns a directory or text file instead of the .exe
+            
+            # Fix path if webdriver-manager returns directory or non-.exe file
             if os.path.isdir(chromedriver_path):
                 print("[SELENIUM] Path is a directory, appending chromedriver.exe")
                 chromedriver_path = os.path.join(chromedriver_path, "chromedriver.exe")
@@ -423,7 +423,7 @@ class SeleniumOAuthAutomator:
                 print("[SELENIUM] Path is not an .exe, fixing it")
                 chromedriver_dir = os.path.dirname(chromedriver_path)
                 chromedriver_path = os.path.join(chromedriver_dir, "chromedriver.exe")
-
+            
             print(f"[SELENIUM] Using ChromeDriver: {chromedriver_path}")
             print(f"[SELENIUM] ChromeDriver exists: {os.path.exists(chromedriver_path)}")
             service = Service(chromedriver_path)
@@ -452,7 +452,7 @@ class SeleniumOAuthAutomator:
                 os.environ["WDM_ARCH"] = "64"
                 chromedriver_path = ChromeDriverManager(driver_version="133.0.6943.54").install()
                 print(f"[SELENIUM ALT] Raw path from ChromeDriverManager: {chromedriver_path}")
-
+                
                 if os.path.isdir(chromedriver_path):
                     print("[SELENIUM ALT] Path is a directory, appending chromedriver.exe")
                     chromedriver_path = os.path.join(chromedriver_path, "chromedriver.exe")
@@ -460,7 +460,7 @@ class SeleniumOAuthAutomator:
                     print("[SELENIUM ALT] Path is not an .exe, fixing it")
                     chromedriver_dir = os.path.dirname(chromedriver_path)
                     chromedriver_path = os.path.join(chromedriver_dir, "chromedriver.exe")
-
+                
                 service = Service(chromedriver_path)
                 driver = webdriver.Chrome(service=service, options=chrome_options)
                 driver.get("chrome://version/")
@@ -512,7 +512,7 @@ class SeleniumOAuthAutomator:
                 if db_callback_url.startswith("http"):
                     callback_url = db_callback_url
                 else:
-                callback_url = f"{base_url}/{db_callback_url.lstrip('/')}"
+                    callback_url = f"{base_url}/{db_callback_url.lstrip('/')}"
                 if api_app:
                     callback_url = callback_url.rstrip('/') + f"/{api_app}"
                 self.logger.info(f"Using callback URL: {callback_url}")
@@ -581,14 +581,6 @@ class SeleniumOAuthAutomator:
                 self.logger.info("Authorization form detected - proceeding directly to authorize")
                 # Skip login, go straight to authorization
                 
-            elif page_state == "account_locked":
-                self.logger.error("Account is locked - manual verification required before OAuth")
-                self._save_debug_screenshot(driver, "account_locked")
-                return {
-                    'success': False,
-                    'error': 'Account locked by X - complete manual verification before retrying'
-                }
-                
             elif page_state == "already_logged_in":
                 self.logger.info("Already logged into X - waiting for OAuth redirect")
                 time.sleep(3)
@@ -597,8 +589,6 @@ class SeleniumOAuthAutomator:
                 
             elif page_state == "login_form":
                 self.logger.info("Login form detected - attempting automatic login")
-                self._save_debug_screenshot(driver, "login_form_detected")
-                self.logger.info("Captured screenshot for login_form state: login_form_detected")
                 
                 # Try automatic login
                 if self._attempt_x_login(driver, profile_id):
@@ -624,7 +614,6 @@ class SeleniumOAuthAutomator:
                     
             elif page_state == "2fa_required":
                 self.logger.info("2FA verification required - attempting automatic 2FA")
-                self._save_debug_screenshot(driver, "2fa_required")
                 
                 # Get credentials to check for 2FA secret
                 credentials = self._get_x_credentials_for_profile(profile_id)
@@ -1662,14 +1651,14 @@ class SeleniumOAuthAutomator:
                     username_field = wait.until(
                         EC.visibility_of_element_located((By.CSS_SELECTOR, selector))
                     )
-                        username_field.clear()
+                    username_field.clear()
                     time.sleep(0.5)
-                        username_field.send_keys(username)
+                    username_field.send_keys(username)
                     time.sleep(1.5)
-                        self.logger.info(f"Filled username: {username} using selector: {selector}")
+                    self.logger.info(f"Filled username: {username} using selector: {selector}")
                     self._log_browser_state(driver, f"Entered username for {username}")
-                        username_filled = True
-                        break
+                    username_filled = True
+                    break
                 except TimeoutException:
                     self.logger.debug(f"Username selector timed out: {selector}")
                 except Exception as selector_error:
@@ -1736,14 +1725,14 @@ class SeleniumOAuthAutomator:
                     password_field = wait.until(
                         EC.visibility_of_element_located((By.CSS_SELECTOR, selector))
                     )
-                        password_field.clear()
+                    password_field.clear()
                     time.sleep(0.5)
-                        password_field.send_keys(password)
+                    password_field.send_keys(password)
                     time.sleep(1.5)
-                        self.logger.info(f"Filled password using selector: {selector}")
+                    self.logger.info(f"Filled password using selector: {selector}")
                     self._log_browser_state(driver, f"Entered password for {username}")
-                        password_filled = True
-                        break
+                    password_filled = True
+                    break
                 except TimeoutException:
                     self.logger.debug(f"Password selector timed out: {selector}")
                 except Exception as selector_error:
