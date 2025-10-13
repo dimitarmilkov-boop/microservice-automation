@@ -7,7 +7,14 @@
 
 ## 🎯 Objective
 
-Simplify the OAuth automation to **only navigate to `/oauth2/authorize` and log what happens** - no automatic login, no redirect handling, no complexity.
+Simplify the OAuth automation to **only navigate to `/oauth2/authorize` and click "Authorize"** - no automatic login, no redirect handling, no complexity.
+
+**IMPORTANT**: This microservice is a **browser clicking service only**. It does NOT handle OAuth tokens:
+- ❌ Does NOT capture tokens
+- ❌ Does NOT exchange authorization codes
+- ❌ Does NOT store tokens
+
+**AIOTT backend** handles all token operations after X redirects to the callback URL.
 
 ---
 
@@ -91,7 +98,7 @@ from shared.logging_config import get_logger
 
 ## 📋 Simplified Flow
 
-### **Current Flow**:
+### **Current Flow (Browser Clicking Only)**:
 
 ```
 1. Generate OAuth URL with PKCE
@@ -109,8 +116,8 @@ from shared.logging_config import get_logger
 7. IF page_state == "authorization_form":
    ├─ Log: "✓ On authorization page!"
    ├─ Click authorize button
-   ├─ Wait for callback redirect
-   └─ Return SUCCESS
+   ├─ Wait for X to redirect to AIOTT callback
+   └─ Return SUCCESS (microservice job done!)
    ↓
 8. ELSE:
    ├─ Log: "[X] Not on authorization page"
@@ -119,7 +126,18 @@ from shared.logging_config import get_logger
    ├─ Capture screenshot
    └─ Return FAIL
    ↓
-9. Done
+9. Done - browser closes, AIOTT backend captures tokens
+```
+
+**After the microservice finishes**:
+```
+X redirects browser to: https://aiott.pro/auth/twitter/oauth2/callback?code=xxx&state=yyy
+   ↓
+AIOTT backend:
+   ├─ Captures authorization code from URL
+   ├─ Exchanges code for access/refresh tokens
+   ├─ Stores tokens in database
+   └─ User account shows as "Connected"
 ```
 
 ### **No More**:
@@ -275,6 +293,49 @@ AIOTT_BASE_URL=https://aiott.pro
 TWITTER_CLIENT_ID=your_client_id
 TWITTER_CLIENT_SECRET=your_client_secret
 ```
+
+---
+
+## 🏗️ Architecture Clarification
+
+### **Microservice Responsibility (x-auth-service)**:
+```
+┌─────────────────────────────────────┐
+│   X Auth Microservice               │
+│   (Browser Clicking Service)        │
+│                                     │
+│   1. Open browser with GoLogin      │
+│   2. Navigate to /oauth2/authorize  │
+│   3. Click "Authorize" button       │
+│   4. Job complete!                  │
+└─────────────────────────────────────┘
+```
+
+### **AIOTT Backend Responsibility**:
+```
+┌─────────────────────────────────────┐
+│   AIOTT Backend                     │
+│   (Token Management)                │
+│                                     │
+│   1. Receive callback from X        │
+│   2. Extract authorization code     │
+│   3. Exchange for access tokens     │
+│   4. Store in database              │
+│   5. Mark account as "Connected"    │
+└─────────────────────────────────────┘
+```
+
+**This microservice does NOT**:
+- ❌ Capture OAuth tokens
+- ❌ Exchange authorization codes
+- ❌ Store tokens in database
+- ❌ Call token endpoints
+
+**It ONLY**:
+- ✅ Opens browser
+- ✅ Navigates to authorize page
+- ✅ Clicks authorize button
+- ✅ Logs what happens
 
 ---
 
