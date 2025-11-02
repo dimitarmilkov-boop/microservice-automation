@@ -10,8 +10,9 @@ from typing import Optional
 import os
 from pathlib import Path
 
-# Fix BOM encoding issue - manually load .env
-env_path = Path(__file__).parent.parent / '.env'
+# Fix BOM encoding issue - manually load .env from PROJECT ROOT
+# Path goes up 4 levels: config.py -> app/ -> x-auth-service/ -> services/ -> project root
+env_path = Path(__file__).parent.parent.parent.parent / '.env'
 if env_path.exists():
     with open(env_path, 'r', encoding='utf-8-sig') as f:
         for line in f:

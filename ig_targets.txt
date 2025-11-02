@@ -1,0 +1,11 @@
+# Instagram Target Accounts
+# One username per line (without @ symbol)
+# Lines starting with # are ignored
+
+# Example accounts (replace with real targets)
+example_user1
+example_user2
+example_user3
+
+# Add your target Instagram usernames below:
+

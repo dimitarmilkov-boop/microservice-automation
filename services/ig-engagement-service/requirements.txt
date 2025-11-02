@@ -1,0 +1,21 @@
+# Instagram Engagement Service Dependencies
+
+# Browser Automation
+selenium==4.15.2
+gologin>=1.0.0
+webdriver-manager>=4.0.0  # Auto-download matching ChromeDriver version
+
+# HTTP Client
+requests==2.31.0
+
+# Environment variables & Configuration
+python-dotenv==1.0.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Database
+# SQLite is built-in Python
+
+# Logging (optional, uses shared logging)
+structlog==23.2.0
+
