@@ -144,54 +144,78 @@ class SessionScheduler:
     
     def _run_session(self, session_data: Dict):
         """
-        Execute a scheduled session
+        Execute a scheduled session for ONE profile
         
         Args:
-            session_data: Dict containing scheduled session info
+            session_data: Dict containing scheduled session info from scheduled_sessions table
         """
-        session_id = session_data['id']
+        scheduled_session_id = session_data['id']
         profile_id = session_data['profile_id']
         profile_name = session_data['profile_name']
         posts_target = session_data['posts_target']
         
-        logger.info(f"Starting session {session_id} for {profile_name}")
+        logger.info(f"\n[SESSION START] Starting session for profile: {profile_name}")
+        logger.info(f"   Scheduled session ID: {scheduled_session_id}")
+        logger.info(f"   Due session found: {session_data.get('scheduled_time')}")
         
-        # Check daily limit before starting
-        if self.db.is_daily_limit_reached(profile_id, self.settings.ig_daily_like_limit):
-            logger.warning(f"Daily limit reached for {profile_name}, skipping session")
-            self.db.update_session_status(session_id, 'skipped', 
-                                        error_message='Daily limit reached')
-            return
-        
-        # Mark session as running
-        from automation_worker import AutomationWorker
-        session_uuid = self.db.create_session(profile_id)
-        self.db.update_session_status(session_id, 'running', session_uuid=session_uuid)
+        print(f"\n[SESSION START] Starting session for profile: {profile_name}")
         
         try:
+            # Mark scheduled session as running
+            conn = self.db.conn
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE scheduled_sessions 
+                SET status = 'running', started_at = ?
+                WHERE id = ?
+            """, (datetime.now(), scheduled_session_id))
+            conn.commit()
+            logger.info(f"   Marked scheduled_session as 'running'")
+            
             # Create and run automation worker
-            worker = AutomationWorker(
+            from automation_worker import InstagramWorker
+            
+            worker = InstagramWorker(
                 profile_id=profile_id,
                 profile_name=profile_name,
-                session_id=session_uuid,
-                db_manager=self.db,
                 settings=self.settings
             )
             
-            # Run the automation
-            success = worker.run_session(posts_target)
+            # Run the automation (worker handles its own session tracking)
+            result = worker.run_session(posts_target=posts_target)
             
-            if success:
-                logger.info(f"Session {session_id} completed successfully")
-                self.db.update_session_status(session_id, 'completed')
-            else:
-                logger.warning(f"Session {session_id} completed with issues")
-                self.db.update_session_status(session_id, 'completed', 
-                                            error_message='Completed with errors')
+            # Update scheduled session status
+            cursor.execute("""
+                UPDATE scheduled_sessions 
+                SET status = 'completed', completed_at = ?, session_id = ?
+                WHERE id = ?
+            """, (datetime.now(), result.get('session_id'), scheduled_session_id))
+            conn.commit()
+            
+            logger.info(f"[OK] Session complete: {result['posts_processed']} posts, {result['likes_performed']} likes")
+            logger.info(f"   Scheduled session marked as 'completed'\n")
+            print(f"[OK] Session complete: {result['posts_processed']} posts, {result['likes_performed']} likes\n")
         
         except Exception as e:
-            logger.error(f"Session {session_id} failed: {e}", exc_info=True)
-            self.db.update_session_status(session_id, 'failed', error_message=str(e))
+            logger.error(f"[ERROR] Session failed for {profile_name}: {e}", exc_info=True)
+            print(f"[ERROR] Session failed for {profile_name}: {e}\n")
+            
+            # Mark scheduled session as failed
+            try:
+                conn = self.db.conn
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE scheduled_sessions 
+                    SET status = 'failed', error_message = ?
+                    WHERE id = ?
+                """, (str(e)[:500], scheduled_session_id))
+                conn.commit()
+                logger.warning("   Scheduled session marked as 'failed'")
+            except:
+                pass
+            
+            # Don't raise - continue with next session
+            logger.warning("   Continuing with next scheduled session...\n")
     
     def run(self):
         """
