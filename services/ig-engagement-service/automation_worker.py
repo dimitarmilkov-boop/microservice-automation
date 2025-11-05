@@ -621,7 +621,7 @@ class InstagramWorker:
             # Scroll comments container
             self._scroll_comments_container()
             
-            # Find comment like buttons
+            # Find comment like buttons AFTER scrolling
             comment_buttons = self._find_comment_like_buttons()
             
             if len(comment_buttons) < 3:
@@ -934,19 +934,36 @@ class InstagramWorker:
             # Sort by Y position (top to bottom)
             buttons_with_y.sort(key=lambda x: x[0])
             
-            # SMART SELECTION: Check if first button is way above the rest
+            # DETAILED LOGGING: Check what text is near each button
+            for i, (y, btn) in enumerate(buttons_with_y[:5]):
+                try:
+                    # Get parent element and extract text
+                    parent = btn.find_element(By.XPATH, "./ancestor::div[contains(@class, 'x1lziwak') or contains(@class, 'x1n2onr6')]")
+                    text = parent.text[:100] if parent.text else "NO TEXT"
+                    logger.info(f"  Button #{i+1} (Y={y}): {text}")
+                except:
+                    logger.info(f"  Button #{i+1} (Y={y}): [could not get text]")
+            
+            # SMART SELECTION: Check if first button is an outlier
             if len(buttons_with_y) >= 4:
                 y1 = buttons_with_y[0][0]
                 y2 = buttons_with_y[1][0]
-                gap = y2 - y1
+                y3 = buttons_with_y[2][0]
                 
-                # If gap > 150px, first button is likely in header/caption
-                if gap > 150:
-                    logger.info(f"  [SKIP FIRST] Button #1 is {gap}px above #2 (likely header/caption)")
-                    logger.info(f"  Taking buttons #2, #3, #4 as actual comment buttons")
+                gap_1_2 = y2 - y1
+                gap_2_3 = y3 - y2
+                
+                # Calculate average spacing between comments (buttons 2-3)
+                avg_spacing = gap_2_3
+                
+                # If gap between button 1 and 2 is significantly larger than normal comment spacing,
+                # OR if gap is > 80px, then button 1 is likely NOT a comment
+                if gap_1_2 > avg_spacing * 1.5 or gap_1_2 > 80:
+                    logger.info(f"  [SKIP FIRST] Button #1 gap ({gap_1_2}px) vs normal spacing ({gap_2_3}px)")
+                    logger.info(f"  Button #1 is likely caption/header, taking buttons #2, #3, #4")
                     final_buttons = [btn for _, btn in buttons_with_y[1:4]]
                 else:
-                    logger.info(f"  Normal spacing (gap={gap}px), taking buttons #1, #2, #3")
+                    logger.info(f"  Normal spacing (gap_1_2={gap_1_2}px, gap_2_3={gap_2_3}px), taking buttons #1, #2, #3")
                     final_buttons = [btn for _, btn in buttons_with_y[:3]]
             else:
                 # Less than 4 buttons, just take first 3
