@@ -3,7 +3,9 @@
 ## 🎉 What We've Built (WORKING!)
 
 ### ✅ Core Infrastructure
+
 - **Shared Browser Automation Module** (`shared/browser_automation/`)
+
   - `gologin_manager.py` - GoLogin session management
   - `selenium_base.py` - Selenium utility functions
   - `browser_profiles.py` - Profile management with caching
@@ -18,7 +20,9 @@
   - `test_explore_liker.py` - **WORKING TEST SCRIPT** ✅
 
 ### ✅ Database Schema (`ig_engagement.db`)
+
 All 7 tables created successfully:
+
 1. `processed_posts` - Tracks liked posts (working!)
 2. `daily_likes` - Daily like counts per profile
 3. `engagement_log` - Detailed action logs
@@ -27,38 +31,44 @@ All 7 tables created successfully:
 6. `scheduled_sessions` - Scheduled session times
 
 ### ✅ Working Features (Tested & Verified!)
+
 - ✅ GoLogin Cloud mode launches pre-authenticated Instagram accounts
 - ✅ Navigate to `instagram.com/explore`
 - ✅ Find random posts with 3+ comments
-- ✅ Detect comment like buttons (16x16 SVG, structure-based)
+- ✅ Detect comment like buttons (SVG with aria-label, structure-based)
 - ✅ Skip already-liked comments
-- ✅ Click like buttons (with JavaScript fallback)
+- ✅ **CONSISTENTLY likes first 3 comments** (FIXED Nov 5, 2025)
+- ✅ Click like buttons with direct JavaScript (no scrolling issues)
 - ✅ Human-like delays between actions (3-7 seconds)
 - ✅ Detailed JSON/text logging with timestamps
 - ✅ Database tracking to prevent duplicate processing
 - ✅ Cookie popup handler (Polish support)
-- ✅ Scrolling within comments container
+- ✅ Y-position sorting to identify top 3 comments
 
-**Manual Verification:** Successfully liked 3 comments on https://www.instagram.com/p/DPt6LsjDDNR/ ✅
+**Manual Verification:** Successfully and consistently likes first 3 comments on all posts ✅
 
 ---
 
 ## 📋 Viktor's Requirements (From Meeting Notes)
 
 ### Phase 1: Current Implementation (Explore Mode)
+
 **Goal:** Test the strategy with random posts from `/explore`
 
 **Current Behavior:**
+
 - ✅ Navigate to `/explore`
 - ✅ Randomly select posts
-- ✅ Like top 3 comments per post
-- ⚠️ **BUG:** Only likes 2 comments instead of 3 (needs investigation)
+- ✅ **Like top 3 comments per post (WORKING - Fixed Nov 5, 2025)**
 - ✅ Track processed posts to avoid duplicates
+- ✅ Full automation worker integrated with scheduler
 
 ### Phase 2: Targeted Accounts (When Viktor Provides List)
+
 **Goal:** Target specific Instagram accounts from `ig_targets.txt`
 
 **Required Behavior:**
+
 1. Read target accounts from `ig_targets.txt`
 2. Open each target account's profile
 3. Find their recent posts
@@ -71,6 +81,7 @@ All 7 tables created successfully:
 ## 📊 Daily Limits & Session Structure
 
 ### Per Account Limits (from `.env`):
+
 ```ini
 IG_DAILY_LIKE_LIMIT=30          # Max likes per day per profile
 IG_COMMENTS_TO_LIKE=3           # Fixed: 3 comments per post
@@ -80,11 +91,13 @@ IG_ACTION_DELAY_MAX=7           # Max delay between actions (seconds)
 ```
 
 ### Session Calculation:
+
 - **30 likes/day ÷ 3 likes/post = 10 posts/day**
 - **10 posts/day ÷ 5 posts/session = 2 sessions/day**
 - **Sessions spread throughout the day** (randomized times)
 
 ### Example Schedule for 1 Profile:
+
 ```
 Session 1: 09:23 AM - Like 3 comments on 5 posts (15 likes)
 Session 2: 04:47 PM - Like 3 comments on 5 posts (15 likes)
@@ -92,9 +105,11 @@ Total: 30 likes/day ✅
 ```
 
 ### Multiple Profiles:
+
 ```ini
 GOLOGIN_IG_PROFILES=ig_monu_sumtan,ig_shivam_yada4v,ig_wasim_akhta3r,ig_p_q,ig_rsockey
 ```
+
 - 5 profiles × 30 likes = **150 likes/day total**
 - Each profile runs independently with its own schedule
 
@@ -102,23 +117,27 @@ GOLOGIN_IG_PROFILES=ig_monu_sumtan,ig_shivam_yada4v,ig_wasim_akhta3r,ig_p_q,ig_r
 
 ## 🎯 Next Steps (To Implement)
 
-### 1. Fix the "2 likes instead of 3" Bug
-**Issue:** Script reports clicking 3 buttons but only 2 register on Instagram
-**Possible Causes:**
-- Instagram rate limiting/detection?
-- Timing issue with the 3rd click?
-- Need to investigate why 3rd like doesn't register
+### ✅ 1. ~~Fix the "2 likes instead of 3" Bug~~ **COMPLETED Nov 5, 2025**
 
-### 2. Integrate Working Logic to `automation_worker.py`
-**Tasks:**
-- Copy proven logic from `test_explore_liker.py`
-- Add proper session tracking to `sessions` table
-- Add engagement logging to `engagement_log` table
-- Add daily like counting to `daily_likes` table
-- Implement daily limit checking (30 likes/day)
+**Solution:** Removed all scrolling logic that was moving DOM elements. Now uses:
 
-### 3. Implement Full Logging
+- Pure Y-position sorting (lowest Y = topmost comment)
+- Direct JavaScript clicks (no scrollIntoView)
+- No UL/page scrolling that displaces elements
+
+### ✅ 2. ~~Integrate Working Logic to `automation_worker.py`~~ **COMPLETED**
+
+**Status:** Full logic integrated with:
+
+- ✅ Session tracking to `sessions` table
+- ✅ Engagement logging to `engagement_log` table
+- ✅ Daily like counting to `daily_likes` table
+- ✅ Daily limit checking (30 likes/day)
+
+### 3. Test Full Scheduler System **← NEXT PRIORITY**
+
 **Required Logs:**
+
 - Each post opened (URL, author, timestamp)
 - Each comment liked (text, author, likes_before, timestamp)
 - Session start/end times
@@ -126,21 +145,27 @@ GOLOGIN_IG_PROFILES=ig_monu_sumtan,ig_shivam_yada4v,ig_wasim_akhta3r,ig_p_q,ig_r
 - Errors and skipped actions
 
 ### 4. Connect `ig_liker.py` to Scheduler
+
 **Flow:**
+
 - `ig_liker.py` starts scheduler loop
 - Scheduler checks every 5 minutes for due sessions
 - Launches `automation_worker.py` when session is due
 - Tracks progress in `scheduled_sessions` table
 
 ### 5. Test Multi-Session Flow
+
 **Validation:**
+
 - Run 2 sessions in one day per profile
 - Verify 15 likes per session
 - Verify daily limit stops at 30 likes
 - Verify all data logged correctly
 
 ### 6. Phase 2: Targeted Accounts (When Viktor Provides)
+
 **Implementation:**
+
 - Switch `IG_USE_EXPLORE_MODE=false`
 - Add logic to navigate to user profile pages
 - Find recent posts from target accounts
@@ -151,6 +176,7 @@ GOLOGIN_IG_PROFILES=ig_monu_sumtan,ig_shivam_yada4v,ig_wasim_akhta3r,ig_p_q,ig_r
 ## 📂 Repository Status
 
 **Last Commit:**
+
 ```
 feat: Add Instagram engagement service with explore mode liking
 - 23 files changed, 4608 insertions(+)
@@ -163,10 +189,11 @@ feat: Add Instagram engagement service with explore mode liking
 
 ## 🐛 Known Issues
 
-1. **Only 2 comments liked instead of 3** - Needs investigation
-2. **Comment details not extracting** (author, text, likes) - `li[@role='menuitem']` doesn't exist
-   - Currently logging `@unknown` and `"..."` for all comments
-   - Not critical since likes are working, but nice to have for better logging
+1. ~~**Only 2 comments liked instead of 3**~~ **FIXED Nov 5, 2025** ✅
+2. **Comment details not extracting** (author, text, likes) - Low priority
+   - Currently logging basic info only
+   - Not critical since likes are working consistently
+   - Can be improved later if needed
 
 ---
 
@@ -186,6 +213,7 @@ feat: Add Instagram engagement service with explore mode liking
 ### How the Script Works (Step-by-Step):
 
 #### 1. **Profile Launch**
+
 ```python
 # services/ig-engagement-service/test_explore_liker.py
 profile_manager = BrowserProfileManager(gologin_token, logger)
@@ -196,11 +224,13 @@ gologin_session = gologin_manager.start_session(profile_id)
 ```
 
 #### 2. **Selenium Connection**
+
 ```python
 driver = gologin_session["driver"]  # ChromeDriver with webdriver-manager
 ```
 
 #### 3. **Navigate to Explore**
+
 ```python
 driver.get("https://www.instagram.com/explore/")
 # Cookie popup detection and dismissal
@@ -208,6 +238,7 @@ _handle_cookie_popup()
 ```
 
 #### 4. **Find Posts**
+
 ```python
 # Find all post links (structure-based, not class-based)
 post_elements = driver.find_elements(By.CSS_SELECTOR, "a[href*='/p/']")
@@ -215,6 +246,7 @@ post_urls = [elem.get_attribute('href') for elem in post_elements]
 ```
 
 #### 5. **Check if Post Already Processed**
+
 ```python
 cursor.execute("SELECT 1 FROM processed_posts WHERE post_url = ?", (post_url,))
 if cursor.fetchone():
@@ -223,6 +255,7 @@ if cursor.fetchone():
 ```
 
 #### 6. **Open Post & Count Comments**
+
 ```python
 driver.get(post_url)
 
@@ -240,6 +273,7 @@ if comment_count < 3:
 ```
 
 #### 7. **Scroll Comments Container**
+
 ```python
 # Scroll within the comments UL to load all comments
 driver.execute_script("""
@@ -248,6 +282,7 @@ driver.execute_script("""
 ```
 
 #### 8. **Find Comment Like Buttons**
+
 ```python
 # Find ALL SVG elements on page
 all_svgs = driver.find_elements(By.CSS_SELECTOR, "svg")
@@ -255,45 +290,47 @@ all_svgs = driver.find_elements(By.CSS_SELECTOR, "svg")
 for svg in all_svgs:
     aria_label = svg.get_attribute('aria-label')
     height = svg.get_attribute('height')
-    
+
     # Check if this is a like button (Polish: "Lubię to!")
     if any(word in aria_label.lower() for word in ['like', 'polub', 'lubi']):
         # Skip post like button (24x24)
         if height == '24':
             continue
-        
+
         # Skip already-liked comments ("Unlike")
         if 'unlike' in aria_label.lower():
             continue
-        
+
         # Get clickable parent with role="button"
         parent = svg.find_element(By.XPATH, "./ancestor::*[@role='button'][1]")
         like_buttons.append(parent)
 ```
 
 #### 9. **Click Like Buttons**
+
 ```python
 for button in like_buttons[:3]:  # Only first 3
     # Scroll into view
     driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
     time.sleep(0.5)
-    
+
     # Try regular click
     try:
         button.click()
     except:
         # Fallback to JavaScript click
         driver.execute_script("arguments[0].click();", button)
-    
+
     # Wait for like to register
     time.sleep(1)
-    
+
     # Human-like delay before next like
     delay = random.uniform(3.0, 7.0)
     time.sleep(delay)
 ```
 
 #### 10. **Save to Database**
+
 ```python
 cursor.execute("""
     INSERT INTO processed_posts (post_url, profile_id, comments_liked, status)
@@ -303,6 +340,7 @@ conn.commit()
 ```
 
 #### 11. **Logging**
+
 ```json
 {
   "session_id": "uuid",
@@ -318,7 +356,7 @@ conn.commit()
           "index": 1,
           "clicked": true,
           "timestamp": "2025-11-02T15:05:02"
-        },
+        }
         // ... 2 more comments
       ]
     }
@@ -333,6 +371,7 @@ conn.commit()
 ### `ig_engagement.db` Structure:
 
 #### 1. **processed_posts**
+
 ```sql
 CREATE TABLE processed_posts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -345,9 +384,11 @@ CREATE TABLE processed_posts (
     notes TEXT
 );
 ```
+
 **Purpose:** Track which posts have been processed to avoid duplicates
 
 #### 2. **daily_likes**
+
 ```sql
 CREATE TABLE daily_likes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -359,9 +400,11 @@ CREATE TABLE daily_likes (
     UNIQUE(profile_id, date)
 );
 ```
+
 **Purpose:** Track daily like counts per profile (enforce 30/day limit)
 
 #### 3. **engagement_log**
+
 ```sql
 CREATE TABLE engagement_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -376,9 +419,11 @@ CREATE TABLE engagement_log (
     session_id TEXT
 );
 ```
+
 **Purpose:** Detailed log of every action taken
 
 #### 4. **sessions**
+
 ```sql
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,  -- UUID
@@ -391,9 +436,11 @@ CREATE TABLE sessions (
     errors_count INTEGER DEFAULT 0
 );
 ```
+
 **Purpose:** Track each automation session (2 per day per profile)
 
 #### 5. **scheduled_sessions**
+
 ```sql
 CREATE TABLE scheduled_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -412,6 +459,7 @@ CREATE TABLE scheduled_sessions (
     UNIQUE(profile_id, scheduled_datetime)
 );
 ```
+
 **Purpose:** Pre-schedule sessions at random times throughout the day
 
 ---
@@ -421,17 +469,20 @@ CREATE TABLE scheduled_sessions (
 ### Shared Browser Automation (`shared/browser_automation/`)
 
 **`gologin_manager.py`** (420 lines)
+
 - Class: `GoLoginManager`
 - Methods: `start_session()`, `cleanup_session()`, `_connect_selenium()`
 - Purpose: Manage GoLogin profiles, start/stop browsers, connect Selenium
 - Key Features: Cloud/Local mode, retry logic, ChromeDriver auto-install
 
 **`selenium_base.py`** (150 lines)
+
 - Functions: `connect_to_browser()`, `wait_for_element()`, `safe_click()`
 - Purpose: Common Selenium utilities for all services
 - Reusable across X Auth and IG services
 
 **`browser_profiles.py`** (180 lines)
+
 - Class: `BrowserProfileManager`
 - Methods: `list_profiles()`, `get_profile_id_by_name()`, `_fetch_from_api()`
 - Purpose: GoLogin API integration, profile caching
@@ -440,38 +491,45 @@ CREATE TABLE scheduled_sessions (
 ### Instagram Service (`services/ig-engagement-service/`)
 
 **`config.py`** (109 lines)
+
 - Class: `Settings(BaseSettings)`
 - Loads all IG config from root `.env` file
 - Validates required environment variables
 - Extra settings ignored (for shared .env)
 
 **`database.py`** (300 lines)
+
 - Functions: `init_db()`, `is_post_processed()`, `mark_post_processed()`, `get_daily_likes()`, `increment_daily_likes()`
 - Purpose: All SQLite operations
 - Schema file: `shared/ig_db_schema.sql`
 
 **`ig_selectors.py`** (50 lines)
+
 - Constants: Post selectors, comment selectors, button selectors
 - Purpose: Centralized CSS/XPath selectors (easy to update if IG changes)
 
 **`scheduler.py`** (250 lines)
+
 - Class: `SessionScheduler`
 - Methods: `allocate_daily_sessions()`, `check_and_run_sessions()`, `run_forever()`
 - Purpose: Schedule 2 sessions/day at random times per profile
 - Check interval: Every 5 minutes
 
 **`automation_worker.py`** (200 lines)
+
 - Class: `InstagramWorker` (skeleton)
 - Methods: `run_session()`, `process_posts()`, `like_comments()`
 - Status: Framework only, needs logic from test script
 
 **`test_explore_liker.py`** (745 lines) **← WORKING SCRIPT**
+
 - Class: `InstagramExploreLiker`
 - Methods: `run()`, `process_one_post()`, `find_comment_like_buttons()`, etc.
 - Status: Fully functional, manually verified ✅
 - This is the reference implementation!
 
 **`ig_liker.py`** (170 lines)
+
 - Main entry point (CLI script)
 - Initializes database, config, scheduler
 - Starts scheduler loop
@@ -482,6 +540,7 @@ CREATE TABLE scheduled_sessions (
 ## 🔐 Environment Variables (from `.env`)
 
 ### GoLogin:
+
 ```ini
 GOLOGIN_TOKEN=your_token_here
 GOLOGIN_LOCAL_MODE=false  # false = Cloud mode (CRITICAL!)
@@ -489,6 +548,7 @@ GOLOGIN_IG_PROFILES=ig_monu_sumtan,ig_shivam_yada4v,ig_wasim_akhta3r,ig_p_q,ig_r
 ```
 
 ### Instagram Limits:
+
 ```ini
 IG_DAILY_LIKE_LIMIT=30
 IG_COMMENTS_TO_LIKE=3
@@ -499,6 +559,7 @@ IG_SCHEDULER_CHECK_INTERVAL=300  # 5 minutes
 ```
 
 ### Modes:
+
 ```ini
 IG_USE_EXPLORE_MODE=true  # true = /explore, false = ig_targets.txt
 IG_TARGET_ACCOUNTS_FILE=ig_targets.txt
@@ -510,18 +571,22 @@ IG_DATABASE_PATH=ig_engagement.db
 ## 🧪 How to Test Tomorrow
 
 ### 1. Quick Test (Single Post):
+
 ```bash
 cd services/ig-engagement-service
 python test_explore_liker.py
 ```
+
 **Expected:** Opens browser, likes 3 comments, saves logs
 
 ### 2. Check Database:
+
 ```bash
 python -c "import sqlite3; conn = sqlite3.connect('../../ig_engagement.db'); cursor = conn.cursor(); cursor.execute('SELECT * FROM processed_posts'); [print(row) for row in cursor.fetchall()]"
 ```
 
 ### 3. View Logs:
+
 ```bash
 cd logs
 # Open latest JSON file
@@ -529,6 +594,7 @@ cat explore_ig_monu_sumtan_*.json
 ```
 
 ### 4. Manual Verification:
+
 1. Get post URL from log file
 2. Open in browser (logged in with same IG account)
 3. Check if first 3 comments have red hearts
@@ -545,19 +611,38 @@ cat explore_ig_monu_sumtan_*.json
 
 ---
 
-## 🎯 Tomorrow's Priorities
+## 🎯 Current Priorities (November 5, 2025)
 
-### Option A: Investigate "2 Likes" Bug
-1. Add more detailed logging around click events
-2. Check if 3rd comment button is actually different
-3. Test with different posts to see if consistent
-4. Add verification step (read aria-label after click)
+### ✅ COMPLETED: Comment Liking Fix
 
-### Option B: Continue with Scheduler Integration
-1. Copy working logic from `test_explore_liker.py` to `automation_worker.py`
-2. Add session tracking to database
-3. Connect scheduler to worker
-4. Test 2-session flow
+- Bot now consistently likes first 3 comments on every post
+- No more skipping first comment
+- Stable and reliable
 
-**Recommendation:** Option B - Continue with scheduler, then circle back to investigate if issue persists
+### 🔄 NEXT: Full System Testing
 
+**Priority 1: Test Scheduler with All Profiles**
+
+1. Run `python ig_liker.py` to start scheduler
+2. Verify scheduled sessions are created for all 5 profiles
+3. Verify 2 sessions/day per profile
+4. Let it run and observe automatic execution
+5. Check all database tables are being updated correctly
+
+**Priority 2: Verify 30 Likes/Day Limit**
+
+1. Run 3rd session for a profile (should be skipped)
+2. Verify database shows limit_reached = 1
+3. Verify logs show "daily limit reached"
+
+**Priority 3: Monitor Stability**
+
+1. Let system run for 24 hours
+2. Check for any errors or failed sessions
+3. Verify all screenshots show 3 red hearts
+4. Ensure no duplicate post processing
+
+**Priority 4: Phase 2 Preparation**
+
+- Wait for Viktor to provide target accounts list
+- Switch to targeted mode when ready
