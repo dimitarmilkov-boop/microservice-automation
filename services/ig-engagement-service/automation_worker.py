@@ -661,13 +661,10 @@ class InstagramWorker:
                     
                     # Click like button
                     try:
-                        # Scroll into view
-                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
-                        time.sleep(0.5)
-                        
-                        # Try regular click
-                        button.click()
-                        logger.info(f"    [OK] Regular click succeeded")
+                        # DON'T use scrollIntoView - it scrolls the whole page and moves comments!
+                        # Just click directly with JavaScript
+                        self.driver.execute_script("arguments[0].click();", button)
+                        logger.info(f"    [OK] JavaScript click succeeded")
                     except Exception as e:
                         # Fallback to JavaScript click
                         logger.warning(f"    [WARN] Regular click failed, trying JavaScript...")
@@ -815,45 +812,13 @@ class InstagramWorker:
     def _scroll_comments_container(self):
         """Scroll within comments container to load all comments"""
         try:
-            logger.info("  Scrolling comments container...")
-            
-            # Find the comments UL and scroll it
-            try:
-                ul_elements = self.driver.find_elements(By.CSS_SELECTOR, "ul")
-                
-                for ul in ul_elements:
-                    li_children = ul.find_elements(By.CSS_SELECTOR, "li")
-                    if len(li_children) >= 2:
-                        # Scroll this UL element - but not too much!
-                        self.driver.execute_script("""
-                            arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});
-                            // Only scroll a bit to load more comments, not all the way
-                            arguments[0].scrollTop = 100;
-                        """, ul)
-                        
-                        logger.info("  Scrolled comments container")
-                        time.sleep(2)
-                        return
-            except:
-                pass
-            
-            # Fallback: scroll any scrollable container
-            try:
-                self.driver.execute_script("""
-                    let containers = document.querySelectorAll('article, section, div[role="dialog"]');
-                    for (let container of containers) {
-                        if (container.scrollHeight > container.clientHeight) {
-                            container.scrollTop = container.scrollHeight;
-                            break;
-                        }
-                    }
-                """)
-                time.sleep(2)
-            except:
-                pass
+            logger.info("  Preparing to find comments (NO scrolling to avoid moving elements)...")
+            # DON'T scroll at all - it moves elements and causes the first comment to be missed
+            # Just wait a moment for any lazy-loaded content
+            time.sleep(1)
         
         except Exception as e:
-            logger.warning(f"Error scrolling comments: {e}")
+            logger.warning(f"Error in scroll preparation: {e}")
     
     def _find_comment_like_buttons(self) -> List:
         """
@@ -931,43 +896,16 @@ class InstagramWorker:
                 except:
                     pass
             
-            # Sort by Y position (top to bottom)
+            # Sort by Y position (top to bottom) - LOWEST Y = TOPMOST COMMENT
             buttons_with_y.sort(key=lambda x: x[0])
             
-            # DETAILED LOGGING: Check what text is near each button
-            for i, (y, btn) in enumerate(buttons_with_y[:5]):
-                try:
-                    # Get parent element and extract text
-                    parent = btn.find_element(By.XPATH, "./ancestor::div[contains(@class, 'x1lziwak') or contains(@class, 'x1n2onr6')]")
-                    text = parent.text[:100] if parent.text else "NO TEXT"
-                    logger.info(f"  Button #{i+1} (Y={y}): {text}")
-                except:
-                    logger.info(f"  Button #{i+1} (Y={y}): [could not get text]")
+            # Log the Y-positions of first 5 buttons for debugging
+            logger.info(f"  Button Y-positions (sorted): {[y for y, _ in buttons_with_y[:5]]}")
             
-            # SMART SELECTION: Check if first button is an outlier
-            if len(buttons_with_y) >= 4:
-                y1 = buttons_with_y[0][0]
-                y2 = buttons_with_y[1][0]
-                y3 = buttons_with_y[2][0]
-                
-                gap_1_2 = y2 - y1
-                gap_2_3 = y3 - y2
-                
-                # Calculate average spacing between comments (buttons 2-3)
-                avg_spacing = gap_2_3
-                
-                # If gap between button 1 and 2 is significantly larger than normal comment spacing,
-                # OR if gap is > 80px, then button 1 is likely NOT a comment
-                if gap_1_2 > avg_spacing * 1.5 or gap_1_2 > 80:
-                    logger.info(f"  [SKIP FIRST] Button #1 gap ({gap_1_2}px) vs normal spacing ({gap_2_3}px)")
-                    logger.info(f"  Button #1 is likely caption/header, taking buttons #2, #3, #4")
-                    final_buttons = [btn for _, btn in buttons_with_y[1:4]]
-                else:
-                    logger.info(f"  Normal spacing (gap_1_2={gap_1_2}px, gap_2_3={gap_2_3}px), taking buttons #1, #2, #3")
-                    final_buttons = [btn for _, btn in buttons_with_y[:3]]
-            else:
-                # Less than 4 buttons, just take first 3
-                final_buttons = [btn for _, btn in buttons_with_y[:3]]
+            # SIMPLE APPROACH: Take the first 3 buttons by Y-position (top 3 comments)
+            # No outlier detection, no smart logic - just the literal top 3
+            final_buttons = [btn for _, btn in buttons_with_y[:3]]
+            logger.info(f"  Taking buttons #1, #2, #3 (lowest Y-positions = topmost comments)")
             
             logger.info(f"  Selected {len(final_buttons)} buttons for liking")
             return final_buttons
