@@ -16,7 +16,7 @@ import uuid
 import sqlite3
 from datetime import datetime, date
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -28,6 +28,17 @@ from config import Settings
 from shared.browser_automation import GoLoginManager, BrowserProfileManager
 
 logger = logging.getLogger(__name__)
+
+LIKE_LABEL_KEYWORDS = [
+    'like', 'polub', 'lubi', 'heart', 'serce', 'curtir', 'me gusta'
+]
+UNLIKE_LABEL_KEYWORDS = [
+    'unlike', 'nie lubi', 'nie lubię'
+]
+REPLY_KEYWORDS = [
+    'reply', 'odpowiedz', 'odpowiedź', 'responder', 'répondre',
+    'antworten', 'rispondi', 'responde', 'responda'
+]
 
 
 class InstagramWorker:
@@ -622,15 +633,15 @@ class InstagramWorker:
             self._scroll_comments_container()
             
             # Find comment like buttons AFTER scrolling
-            comment_buttons = self._find_comment_like_buttons()
+            comment_targets = self._find_comment_like_buttons()
             
-            if len(comment_buttons) < 3:
-                logger.warning(f"  [SKIP] Only found {len(comment_buttons)} like buttons, need 3")
+            if len(comment_targets) < 3:
+                logger.warning(f"  [SKIP] Only found {len(comment_targets)} comment targets, need 3")
                 self._log_engagement_action(
                     'skip_post',
                     post_url,
                     instagram_username=post_author,
-                    metadata={'reason': 'insufficient_like_buttons', 'buttons_found': len(comment_buttons)}
+                    metadata={'reason': 'insufficient_like_buttons', 'buttons_found': len(comment_targets)}
                 )
                 return False
             
@@ -638,9 +649,11 @@ class InstagramWorker:
             logger.info(f"  Liking 3 comments...")
             comments_liked = 0
             
-            for i in range(3):
+            for i, target in enumerate(comment_targets[:3]):
                 try:
-                    button = comment_buttons[i]
+                    button = target['button']
+                    comment_text = target.get('text', '')
+                    comment_author = target.get('author', 'unknown')
                     
                     # Log button position for verification
                     try:
@@ -648,10 +661,11 @@ class InstagramWorker:
                         logger.info(f"    [TARGET {i+1}/3] Button at Y={y_pos} (visual position)")
                     except:
                         pass
+                    logger.info(f"    [COMMENT] Author: {comment_author or 'unknown'} | Text: {comment_text[:120]}")
                     
                     # Check if already liked
                     try:
-                        svg = button.find_element(By.CSS_SELECTOR, "svg")
+                        svg = target.get('svg') or button.find_element(By.CSS_SELECTOR, "svg")
                         svg_aria = svg.get_attribute('aria-label') or ''
                         if 'unlike' in svg_aria.lower() or 'nie lubi' in svg_aria.lower():
                             logger.info(f"    Comment {i+1} already liked, skipping")
@@ -661,10 +675,13 @@ class InstagramWorker:
                     
                     # Click like button
                     try:
-                        # DON'T use scrollIntoView - it scrolls the whole page and moves comments!
-                        # Just click directly with JavaScript
-                        self.driver.execute_script("arguments[0].click();", button)
-                        logger.info(f"    [OK] JavaScript click succeeded")
+                        # Scroll into view
+                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
+                        time.sleep(0.5)
+                        
+                        # Try regular click
+                        button.click()
+                        logger.info(f"    [OK] Regular click succeeded")
                     except Exception as e:
                         # Fallback to JavaScript click
                         logger.warning(f"    [WARN] Regular click failed, trying JavaScript...")
@@ -676,6 +693,19 @@ class InstagramWorker:
                     
                     comments_liked += 1
                     self.likes_performed += 1
+                    
+                    # Verify aria-label changed to indicate success
+                    verified = False
+                    try:
+                        svg_after = target.get('svg') or button.find_element(By.CSS_SELECTOR, "svg")
+                        aria_after = (svg_after.get_attribute('aria-label') or '').lower()
+                        verified = any(keyword in aria_after for keyword in UNLIKE_LABEL_KEYWORDS)
+                        if verified:
+                            logger.info("    [VERIFY] Heart toggled (aria-label now indicates unlike)")
+                        else:
+                            logger.warning(f"    [WARN] Aria-label after click: '{aria_after}'")
+                    except Exception as verify_error:
+                        logger.warning(f"    [WARN] Could not verify aria-label change: {verify_error}")
                     
                     # CRITICAL: Take screenshot AFTER like to verify which comment was liked
                     try:
@@ -694,7 +724,12 @@ class InstagramWorker:
                         'like_comment',
                         post_url,
                         instagram_username=post_author,
-                        metadata={'comment_index': i+1}
+                        metadata={
+                            'comment_index': i+1,
+                            'comment_author': comment_author,
+                            'comment_text': comment_text[:200],
+                            'verified_unlike': bool(verified)
+                        }
                     )
                     
                     # Random delay between likes
@@ -809,107 +844,126 @@ class InstagramWorker:
             logger.error(f"Error counting comments: {e}")
             return 0
     
+    def _is_comment_row(self, text: str) -> bool:
+        """Determine if captured text likely represents a comment row"""
+        if not text:
+            return False
+        lowered = text.lower()
+        for keyword in REPLY_KEYWORDS:
+            if keyword in lowered:
+                return True
+        return False
+
     def _scroll_comments_container(self):
         """Scroll within comments container to load all comments"""
         try:
-            logger.info("  Preparing to find comments (NO scrolling to avoid moving elements)...")
-            # DON'T scroll at all - it moves elements and causes the first comment to be missed
-            # Just wait a moment for any lazy-loaded content
-            time.sleep(1)
+            logger.info("  Scrolling comments container...")
+            
+            # Find the comments UL and scroll it
+            try:
+                ul_elements = self.driver.find_elements(By.CSS_SELECTOR, "ul")
+                
+                for ul in ul_elements:
+                    li_children = ul.find_elements(By.CSS_SELECTOR, "li")
+                    if len(li_children) >= 2:
+                        # Scroll this UL element to the TOP to ensure first comments are visible
+                        self.driver.execute_script("""
+                            arguments[0].scrollIntoView({behavior: 'smooth', block: 'start'});
+                            // Scroll to TOP of comments list (scrollTop = 0)
+                            arguments[0].scrollTop = 0;
+                        """, ul)
+                        
+                        logger.info("  Scrolled comments container")
+                        time.sleep(2)
+                        return
+            except:
+                pass
+            
+            # Fallback: scroll any scrollable container
+            try:
+                self.driver.execute_script("""
+                    let containers = document.querySelectorAll('article, section, div[role="dialog"]');
+                    for (let container of containers) {
+                        if (container.scrollHeight > container.clientHeight) {
+                            container.scrollTop = container.scrollHeight;
+                            break;
+                        }
+                    }
+                """)
+                time.sleep(2)
+            except:
+                pass
         
         except Exception as e:
-            logger.warning(f"Error in scroll preparation: {e}")
+            logger.warning(f"Error scrolling comments: {e}")
     
-    def _find_comment_like_buttons(self) -> List:
-        """
-        Find like buttons for comments - SIMPLE AND ROBUST
-        
-        Strategy:
-        - Find ALL like button SVGs on the page
-        - Exclude the main post button (size 24x24)
-        - Exclude already liked (red hearts)
-        - Sort by Y-position 
-        - Skip the first one IF it's too far above the rest (caption/header button)
-        - Take the next 3
-        
-        Returns:
-            List of clickable button elements (sorted top-to-bottom)
-        """
+    def _find_comment_like_buttons(self) -> List[Dict[str, Any]]:
+        """Locate the first comment <li> rows with like buttons"""
         try:
-            logger.info("  Searching for comment like buttons (simple approach)...")
-            
-            like_buttons = []
-            
-            # Find ALL SVGs with aria-label
-            all_svgs = self.driver.find_elements(By.CSS_SELECTOR, "svg[aria-label]")
-            logger.info(f"  Found {len(all_svgs)} SVGs with aria-label")
-            
-            for svg in all_svgs:
+            logger.info("  Locating comment rows with like buttons (structure-based)...")
+            comment_targets: List[Dict[str, Any]] = []
+
+            try:
+                article = self.driver.find_element(By.TAG_NAME, "article")
+            except Exception:
+                logger.warning("  Could not find <article>; using whole document")
+                article = self.driver
+
+            li_elements = article.find_elements(By.XPATH, ".//li")
+            logger.info(f"  Examining {len(li_elements)} LI elements")
+
+            for li in li_elements:
+                if len(comment_targets) >= 5:
+                    break
+
                 try:
-                    aria_label = svg.get_attribute('aria-label') or ''
-                    height = svg.get_attribute('height') or ''
-                    width = svg.get_attribute('width') or ''
-                    
-                    # Is this a like button?
-                    if any(word in aria_label.lower() for word in ['like', 'polub', 'lubi', 'heart', 'serce']):
-                        # CRITICAL: Skip the main post like button (24x24)
-                        if height == '24' or width == '24':
-                            logger.debug(f"    Skipping post button (24x24)")
-                            continue
-                        
-                        # Skip already liked
-                        if 'unlike' in aria_label.lower() or 'nie lubi' in aria_label.lower():
-                            logger.debug(f"    Skipping already liked")
-                            continue
-                        
-                        # Get clickable parent
+                    svg = li.find_element(By.XPATH, ".//svg[@aria-label]")
+                except Exception:
+                    continue
+
+                aria_label = (svg.get_attribute('aria-label') or '').lower()
+                if not any(keyword in aria_label for keyword in LIKE_LABEL_KEYWORDS):
+                    continue
+                if any(keyword in aria_label for keyword in UNLIKE_LABEL_KEYWORDS):
+                    logger.debug("    Skipping already-liked heart")
+                    continue
+
+                height = svg.get_attribute('height') or ''
+                width = svg.get_attribute('width') or ''
+                if height == '24' or width == '24':
+                    logger.debug("    Skipping 24x24 post heart")
+                    continue
+
+                try:
+                    button = svg.find_element(By.XPATH, "./ancestor::*[@role='button'][1]")
+                except Exception:
+                    try:
+                        button = svg.find_element(By.XPATH, "./ancestor::*[self::button or @role='button'][1]")
+                    except Exception:
                         button = None
-                        try:
-                            button = svg.find_element(By.XPATH, "./ancestor::*[@role='button'][1]")
-                        except:
-                            try:
-                                parent = svg.find_element(By.XPATH, "./..")
-                                if parent.tag_name in ['button', 'a', 'span', 'div']:
-                                    button = parent
-                            except:
-                                pass
-                        
-                        if button and button not in like_buttons:
-                            like_buttons.append(button)
-                
-                except Exception as e:
-                    pass
-            
-            if not like_buttons:
-                logger.warning("  No like buttons found at all")
-                return []
-            
-            # Sort by Y-position
-            logger.info(f"  Found {len(like_buttons)} potential comment like buttons")
-            buttons_with_y = []
-            
-            for i, btn in enumerate(like_buttons):
+
+                if not button:
+                    continue
+
+                text = (li.text or "").strip()
+                author = ""
                 try:
-                    y_pos = btn.location['y']
-                    buttons_with_y.append((y_pos, btn))
-                    logger.info(f"    Button #{i+1}: Y={y_pos}")
-                except:
+                    author_elem = li.find_element(By.XPATH, ".//a")
+                    author = author_elem.text.strip()
+                except Exception:
                     pass
-            
-            # Sort by Y position (top to bottom) - LOWEST Y = TOPMOST COMMENT
-            buttons_with_y.sort(key=lambda x: x[0])
-            
-            # Log the Y-positions of first 5 buttons for debugging
-            logger.info(f"  Button Y-positions (sorted): {[y for y, _ in buttons_with_y[:5]]}")
-            
-            # SIMPLE APPROACH: Take the first 3 buttons by Y-position (top 3 comments)
-            # No outlier detection, no smart logic - just the literal top 3
-            final_buttons = [btn for _, btn in buttons_with_y[:3]]
-            logger.info(f"  Taking buttons #1, #2, #3 (lowest Y-positions = topmost comments)")
-            
-            logger.info(f"  Selected {len(final_buttons)} buttons for liking")
-            return final_buttons
-        
+
+                comment_targets.append({
+                    'button': button,
+                    'svg': svg,
+                    'text': text,
+                    'author': author,
+                    'label_before': aria_label
+                })
+
+            logger.info(f"  Identified {len(comment_targets)} comment rows with like buttons")
+            return comment_targets
+
         except Exception as e:
             logger.error(f"  Error finding like buttons: {e}")
             return []
