@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>История подписок - Threads Auto Follow</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000000;
+      color: #ffffff;
+      min-height: 100vh;
+      overflow-x: hidden;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 100%;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #333333;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .header p {
+      color: #a8a8a8;
+      font-size: 14px;
+    }
+
+    .author-info {
+      margin-top: 10px;
+    }
+
+    .author-link {
+      color: #a8a8a8;
+      text-decoration: none;
+      font-size: 12px;
+      transition: color 0.2s ease;
+    }
+
+    .author-link:hover {
+      color: #ffffff;
+    }
+
+    .history-stats {
+      background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 25px;
+      border: 1px solid #333333;
+      display: flex;
+      justify-content: space-around;
+      text-align: center;
+    }
+
+    .stat-item {
+      color: #ffffff;
+    }
+
+    .stat-number {
+      font-size: 28px;
+      font-weight: 700;
+      color: #ffffff;
+      display: block;
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: #a8a8a8;
+      margin-top: 6px;
+    }
+
+    .history-list {
+      max-height: 400px;
+      overflow-y: auto;
+      margin-bottom: 20px;
+    }
+
+    .history-list::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .history-list::-webkit-scrollbar-track {
+      background: #1a1a1a;
+      border-radius: 4px;
+    }
+
+    .history-list::-webkit-scrollbar-thumb {
+      background: #444444;
+      border-radius: 4px;
+    }
+
+    .history-list::-webkit-scrollbar-thumb:hover {
+      background: #555555;
+    }
+
+    .history-item {
+      background: linear-gradient(135deg, #2a2a2a 0%, #333333 100%);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 1px solid #444444;
+      transition: all 0.2s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .history-item::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 4px;
+      height: 100%;
+      background: linear-gradient(180deg, #ffffff 0%, #a8a8a8 100%);
+    }
+
+    .history-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+      border-color: #555555;
+    }
+
+    .history-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .history-username {
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 15px;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .history-username::before {
+      content: '👤';
+      font-size: 14px;
+    }
+
+    .history-date {
+      color: #a8a8a8;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .history-date::before {
+      content: '🕒';
+      font-size: 12px;
+    }
+
+    .history-empty {
+      text-align: center;
+      color: #a8a8a8;
+      font-size: 16px;
+      padding: 60px 20px;
+      background: linear-gradient(135deg, #2a2a2a 0%, #333333 100%);
+      border-radius: 12px;
+      border: 2px dashed #444444;
+    }
+
+    .history-empty::before {
+      content: '📭';
+      display: block;
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 15px;
+      margin-top: 20px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn-secondary {
+      background: #1a1a1a;
+      color: #ffffff;
+      border: 1px solid #333333;
+    }
+
+    .btn-secondary:hover {
+      background: #2a2a2a;
+      border-color: #444444;
+      transform: translateY(-1px);
+    }
+
+    .btn-primary {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    .btn-primary:hover {
+      background: #f0f0f0;
+      transform: translateY(-1px);
+    }
+
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      z-index: 1000;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    .notification.success {
+      background: #1a1a1a;
+      color: #ffffff;
+      border: 1px solid #333333;
+    }
+
+    .notification.error {
+      background: #2a1a1a;
+      color: #ff6b6b;
+      border: 1px solid #443333;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .loading {
+      text-align: center;
+      color: #a8a8a8;
+      font-size: 16px;
+      padding: 40px 20px;
+    }
+
+    .loading::before {
+      content: '⏳';
+      display: block;
+      font-size: 32px;
+      margin-bottom: 12px;
+      animation: spin 2s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+        <button id="back-btn" class="btn btn-secondary" style="flex: 0 0 auto; padding: 8px 12px;">
+          ← Назад к Threads
+        </button>
+        <div style="flex: 1;">
+          <h1>📋 История подписок</h1>
+          <p>Threads Auto Follow</p>
+        </div>
+      </div>
+      <div class="author-info">
+        <a href="https://t.me/+ZDRFEJJuuoQ2ZGEy" target="_blank" class="author-link">
+          👨‍💻 Автор: Evheshka
+        </a>
+      </div>
+    </div>
+
+    <!-- Статистика -->
+    <div id="history-stats" class="history-stats" style="display: none;">
+      <div class="stat-item">
+        <span id="total-subscriptions" class="stat-number">0</span>
+        <div class="stat-label">Всего подписок</div>
+      </div>
+      <div class="stat-item">
+        <span id="today-subscriptions" class="stat-number">0</span>
+        <div class="stat-label">Сегодня</div>
+      </div>
+      <div class="stat-item">
+        <span id="week-subscriptions" class="stat-number">0</span>
+        <div class="stat-label">За неделю</div>
+      </div>
+    </div>
+    
+    <!-- Список подписок -->
+    <div id="history-list" class="history-list">
+      <div class="loading">Загрузка истории...</div>
+    </div>
+    
+    <!-- Кнопки управления -->
+    <div class="controls">
+      <button id="clear-history-btn" class="btn btn-secondary">
+        🗑️ Очистить историю
+      </button>
+      <button id="export-history-btn" class="btn btn-secondary">
+        📤 Экспорт CSV
+      </button>
+      <button id="refresh-btn" class="btn btn-primary">
+        🔄 Обновить
+      </button>
+    </div>
+  </div>
+
+  <script src="history.js"></script>
+</body>
+</html>

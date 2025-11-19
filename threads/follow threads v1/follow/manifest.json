@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Threads Auto Follow",
+  "version": "1.0",
+  "description": "Автоматически подписывается на пользователей в Threads. Автор: Evheshka",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://threads.net/*",
+    "https://www.threads.net/*",
+    "https://threads.com/*",
+    "https://www.threads.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://threads.net/*", "https://www.threads.net/*", "https://threads.com/*", "https://www.threads.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Threads Auto Follow"
+  }
+}

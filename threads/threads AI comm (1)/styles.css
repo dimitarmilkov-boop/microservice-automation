@@ -1,0 +1,367 @@
+/* ThreadsAI Content Script Styles */
+
+/* Notification Styles */
+.threadsai-notification {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    padding: 12px 16px !important;
+    border-radius: 8px !important;
+    color: white !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+    z-index: 99999 !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+    transform: translateX(100%) !important;
+    transition: transform 0.3s ease !important;
+    max-width: 300px !important;
+    word-wrap: break-word !important;
+}
+
+.threadsai-notification.show {
+    transform: translateX(0) !important;
+}
+
+.threadsai-notification.success {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
+}
+
+.threadsai-notification.error {
+    background: linear-gradient(135deg, #dc3545 0%, #e74c3c 100%) !important;
+}
+
+.threadsai-notification.warning {
+    background: linear-gradient(135deg, #ffc107 0%, #f39c12 100%) !important;
+    color: #856404 !important;
+}
+
+.threadsai-notification.info {
+    background: linear-gradient(135deg, #17a2b8 0%, #3498db 100%) !important;
+}
+
+/* Floating Panel Styles */
+.threadsai-panel {
+    position: fixed !important;
+    bottom: 20px !important;
+    right: 20px !important;
+    background: white !important;
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15) !important;
+    z-index: 99998 !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important;
+    font-size: 13px !important;
+    min-width: 200px !important;
+    max-width: 280px !important;
+    transform: translateY(100%) !important;
+    transition: transform 0.3s ease, opacity 0.3s ease !important;
+    opacity: 0 !important;
+}
+
+.threadsai-panel.show {
+    transform: translateY(0) !important;
+    opacity: 1 !important;
+}
+
+.threadsai-panel h4 {
+    margin: 0 0 12px 0 !important;
+    color: #007bff !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+}
+
+.threadsai-stats {
+    display: flex !important;
+    justify-content: space-between !important;
+    margin-bottom: 12px !important;
+    gap: 8px !important;
+}
+
+.threadsai-stats span {
+    display: flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    font-size: 12px !important;
+    color: #6c757d !important;
+}
+
+.threadsai-status {
+    text-align: center !important;
+    padding: 8px 12px !important;
+    border-radius: 6px !important;
+    font-weight: 500 !important;
+    font-size: 12px !important;
+    transition: all 0.2s ease !important;
+}
+
+.threadsai-status.running {
+    background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%) !important;
+    color: #155724 !important;
+    animation: pulse-running 2s infinite !important;
+}
+
+.threadsai-status.paused {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%) !important;
+    color: #856404 !important;
+}
+
+.threadsai-status.stopped {
+    background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%) !important;
+    color: #721c24 !important;
+}
+
+@keyframes pulse-running {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+/* Highlighted Posts */
+.threadsai-highlighted {
+    outline: 2px solid #007bff !important;
+    outline-offset: 2px !important;
+    border-radius: 8px !important;
+    transition: outline 0.3s ease !important;
+}
+
+.threadsai-processing {
+    outline: 2px solid #ffc107 !important;
+    outline-offset: 2px !important;
+    border-radius: 8px !important;
+}
+
+.threadsai-processed {
+    outline: 2px solid #28a745 !important;
+    outline-offset: 2px !important;
+    border-radius: 8px !important;
+}
+
+/* Button Enhancements */
+.threadsai-enhanced-button {
+    position: relative !important;
+}
+
+.threadsai-enhanced-button::after {
+    content: "🤖" !important;
+    position: absolute !important;
+    top: -8px !important;
+    right: -8px !important;
+    font-size: 12px !important;
+    background: #007bff !important;
+    border-radius: 50% !important;
+    width: 18px !important;
+    height: 18px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 10px !important;
+}
+
+/* Loading Indicators */
+.threadsai-loading {
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+.threadsai-loading::before {
+    content: "" !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: -100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: linear-gradient(90deg, transparent, rgba(0, 123, 255, 0.3), transparent) !important;
+    animation: loading-shimmer 1.5s infinite !important;
+}
+
+@keyframes loading-shimmer {
+    0% { left: -100%; }
+    100% { left: 100%; }
+}
+
+/* Custom Scrollbar for Panel */
+.threadsai-panel::-webkit-scrollbar {
+    width: 4px !important;
+}
+
+.threadsai-panel::-webkit-scrollbar-track {
+    background: #f1f1f1 !important;
+    border-radius: 2px !important;
+}
+
+.threadsai-panel::-webkit-scrollbar-thumb {
+    background: #c1c1c1 !important;
+    border-radius: 2px !important;
+}
+
+.threadsai-panel::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8 !important;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .threadsai-panel {
+        bottom: 10px !important;
+        right: 10px !important;
+        left: 10px !important;
+        min-width: auto !important;
+        max-width: none !important;
+    }
+    
+    .threadsai-notification {
+        top: 10px !important;
+        right: 10px !important;
+        left: 10px !important;
+        max-width: none !important;
+    }
+    
+    .threadsai-stats {
+        flex-direction: column !important;
+        gap: 4px !important;
+    }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    .threadsai-panel {
+        background: #2d3748 !important;
+        border-color: #4a5568 !important;
+        color: #e2e8f0 !important;
+    }
+    
+    .threadsai-panel h4 {
+        color: #63b3ed !important;
+    }
+    
+    .threadsai-stats span {
+        color: #a0aec0 !important;
+    }
+    
+    .threadsai-status.running {
+        background: linear-gradient(135deg, #2f855a 0%, #38a169 100%) !important;
+        color: #c6f6d5 !important;
+    }
+    
+    .threadsai-status.paused {
+        background: linear-gradient(135deg, #d69e2e 0%, #ecc94b 100%) !important;
+        color: #fef5e7 !important;
+    }
+    
+    .threadsai-status.stopped {
+        background: linear-gradient(135deg, #e53e3e 0%, #fc8181 100%) !important;
+        color: #fed7d7 !important;
+    }
+}
+
+/* Animation Classes */
+.threadsai-fade-in {
+    animation: threadsai-fadeIn 0.3s ease-out !important;
+}
+
+.threadsai-slide-up {
+    animation: threadsai-slideUp 0.3s ease-out !important;
+}
+
+.threadsai-bounce {
+    animation: threadsai-bounce 0.6s ease-out !important;
+}
+
+@keyframes threadsai-fadeIn {
+    from {
+        opacity: 0 !important;
+        transform: translateY(10px) !important;
+    }
+    to {
+        opacity: 1 !important;
+        transform: translateY(0) !important;
+    }
+}
+
+@keyframes threadsai-slideUp {
+    from {
+        transform: translateY(100%) !important;
+        opacity: 0 !important;
+    }
+    to {
+        transform: translateY(0) !important;
+        opacity: 1 !important;
+    }
+}
+
+@keyframes threadsai-bounce {
+    0%, 20%, 53%, 80%, 100% {
+        transform: translate3d(0, 0, 0) !important;
+    }
+    40%, 43% {
+        transform: translate3d(0, -8px, 0) !important;
+    }
+    70% {
+        transform: translate3d(0, -4px, 0) !important;
+    }
+    90% {
+        transform: translate3d(0, -2px, 0) !important;
+    }
+}
+
+/* Progress Bar */
+.threadsai-progress {
+    width: 100% !important;
+    height: 4px !important;
+    background: #e9ecef !important;
+    border-radius: 2px !important;
+    overflow: hidden !important;
+    margin: 8px 0 !important;
+}
+
+.threadsai-progress-bar {
+    height: 100% !important;
+    background: linear-gradient(90deg, #007bff 0%, #0056b3 100%) !important;
+    border-radius: 2px !important;
+    transition: width 0.3s ease !important;
+    width: 0% !important;
+}
+
+/* Accessibility */
+.threadsai-sr-only {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+    .threadsai-panel {
+        border: 2px solid #000 !important;
+        background: #fff !important;
+        color: #000 !important;
+    }
+    
+    .threadsai-notification {
+        border: 2px solid #000 !important;
+    }
+    
+    .threadsai-status {
+        border: 1px solid #000 !important;
+    }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+    .threadsai-notification,
+    .threadsai-panel,
+    .threadsai-status,
+    .threadsai-enhanced-button::after {
+        transition: none !important;
+        animation: none !important;
+    }
+}

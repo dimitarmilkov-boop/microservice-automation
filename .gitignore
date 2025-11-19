@@ -193,9 +193,10 @@ gologin_profile_*
 .~lock.*
 
 # ========================================
-# Documentation (keep source, ignore build)
+# Documentation
 # ========================================
 docs/_build/
+*.md
 
 # ========================================
 # Node modules (if you add any frontend)

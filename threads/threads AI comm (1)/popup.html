@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThreadsAI commenter - evheshka</title>
+    <link rel="stylesheet" href="popup.css">
+    <style>
+        /* API Key Validation Styles for Popup */
+        .api-key-input {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+        }
+
+        .api-key-input input {
+            flex: 1;
+            transition: all 0.3s ease;
+        }
+
+        .api-key-input.validating input {
+            border-color: #ffa500 !important;
+            box-shadow: 0 0 5px rgba(255, 165, 0, 0.3) !important;
+        }
+
+        .api-key-input.valid input {
+            border-color: #28a745 !important;
+            box-shadow: 0 0 5px rgba(40, 167, 69, 0.3) !important;
+        }
+
+        .api-key-input.invalid input {
+            border-color: #dc3545 !important;
+            box-shadow: 0 0 5px rgba(220, 53, 69, 0.3) !important;
+        }
+
+        .api-validation-status {
+            font-size: 16px;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .validation-message {
+            font-size: 11px;
+            margin-top: 3px;
+            padding: 3px 6px;
+            border-radius: 3px;
+            display: none;
+        }
+
+        .validation-message.success {
+            background-color: rgba(40, 167, 69, 0.1);
+            color: #28a745;
+            border: 1px solid rgba(40, 167, 69, 0.3);
+        }
+
+        .validation-message.error {
+            background-color: rgba(220, 53, 69, 0.1);
+            color: #dc3545;
+            border: 1px solid rgba(220, 53, 69, 0.3);
+        }
+
+        .validation-message.info {
+            background-color: rgba(255, 165, 0, 0.1);
+            color: #ffa500;
+            border: 1px solid rgba(255, 165, 0, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <img src="ico/icon-48.png" alt="ThreadsAI" style="width:32px;height:32px;">
+                <div class="title-info">
+                    <h1>ThreadsAI commenter - evheshka</h1>
+                    <span class="version">v5.23</span>
+                </div>
+            </div>
+            <div class="status-card" id="status">
+                <div class="status-indicator">
+                    <span class="dot" id="statusDot"></span>
+                    <span id="statusText" data-lang="stopped">Остановлено</span>
+                </div>
+                <div class="stats-inline">
+                    <span class="stat">💬 <span id="commentsCount">0</span></span>
+                    <span class="stat">❤️ <span id="likesCount">0</span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Control Panel -->
+        <div class="control-panel">
+            <div class="main-actions">
+                <button id="startBtn" class="btn-control btn-start">
+                    <span class="icon">▶️</span>
+                    <span data-lang="startBtn">Запустить</span>
+                </button>
+                <button id="pauseBtn" class="btn-control btn-pause" disabled>
+                    <span class="icon">⏸️</span>
+                    <span data-lang="pauseBtn">Пауза</span>
+                </button>
+                <button id="stopBtn" class="btn-control btn-stop" disabled>
+                    <span class="icon">⏹️</span>
+                    <span data-lang="stopBtn">Стоп</span>
+                </button>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="progress-container" id="progressContainer" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-text" id="progressText">0 / 50</div>
+            </div>
+        </div>
+
+
+
+        <!-- Quick Settings -->
+        <div class="quick-settings">
+            <!-- Basic Controls -->
+            <div class="settings-row">
+                <div class="setting-compact">
+                    <label data-lang="posts">Постов:</label>
+                    <input type="number" id="maxPosts" value="50" min="1" max="200" class="input-mini">
+                </div>
+                <div class="setting-compact">
+                    <label data-lang="delay">Задержка:</label>
+                    <div class="delay-mini">
+                        <input type="number" id="minDelay" value="30" min="10" max="300" class="input-mini">
+                        <span>-</span>
+                        <input type="number" id="maxDelay" value="120" min="30" max="600" class="input-mini">
+                        <span data-lang="sec">сек</span>
+                    </div>
+                </div>
+                <div class="setting-compact">
+                    <label data-lang="actionsPerHour">Действий/час:</label>
+                    <input type="number" id="actionsPerHour" value="15" min="1" max="50" class="input-mini">
+                </div>
+            </div>
+
+            <!-- Primary Actions -->
+            <div class="primary-toggles">
+                <label class="toggle-primary">
+                    <input type="checkbox" id="autoLike" checked>
+                    <span class="toggle-switch"></span>
+                    <span class="toggle-text" data-lang="autoLikes">❤️ Автолайки</span>
+                </label>
+                <label class="toggle-primary">
+                    <input type="checkbox" id="stealthMode" checked>
+                    <span class="toggle-switch"></span>
+                    <span class="toggle-text" data-lang="stealthMode">🥷 Скрытный режим</span>
+                </label>
+            </div>
+
+            <!-- Filter Toggles -->
+            <div class="filter-section">
+                <h4 class="section-title" data-lang="filters">🔍 Фильтры</h4>
+                <div class="filter-grid">
+                    <label class="toggle-mini">
+                        <input type="checkbox" id="enablePostFilter">
+                        <span class="toggle-switch mini"></span>
+                        <span data-lang="postsFilter">Посты</span>
+                    </label>
+                    <label class="toggle-mini">
+                        <input type="checkbox" id="enableKeywordSearch">
+                        <span class="toggle-switch mini"></span>
+                        <span data-lang="keywordFilter">Ключевые слова</span>
+                    </label>
+                    <label class="toggle-mini">
+                        <input type="checkbox" id="enableLanguageFilter">
+                        <span class="toggle-switch mini"></span>
+                        <span data-lang="languagesFilter">Языки</span>
+                    </label>
+                    <label class="toggle-mini">
+                        <input type="checkbox" id="enableUserFilter">
+                        <span class="toggle-switch mini"></span>
+                        <span data-lang="usersFilter">Пользователи</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Safety Options -->
+            <div class="safety-section">
+                <h4 class="section-title" data-lang="safety">🛡️ Безопасность</h4>
+                <div class="safety-grid">
+                    <label class="toggle-mini">
+                        <input type="checkbox" id="avoidDuplicates" checked>
+                        <span class="toggle-switch mini"></span>
+                        <span data-lang="avoidDuplicates">Избегать дубликатов</span>
+                    </label>
+                    <label class="toggle-mini">
+                        <input type="checkbox" id="respectLimits" checked>
+                        <span class="toggle-switch mini"></span>
+                        <span data-lang="respectLimits">Соблюдать лимиты</span>
+                    </label>
+                    <label class="toggle-mini">
+                        <input type="checkbox" id="avoidDuplicateUsers">
+                        <span class="toggle-switch mini"></span>
+                        <span data-lang="uniqueWords">Уникальные юзеры</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Theme Selection -->
+            <div class="theme-section">
+                <h4 class="section-title" data-lang="themeSection">🎨 Тема</h4>
+                <div class="theme-grid">
+                    <label class="theme-option" data-theme="light">
+                        <input type="radio" name="theme" value="light" id="themeLight">
+                        <span class="theme-preview light-theme">
+                            <span class="theme-icon">☀️</span>
+                            <span data-lang="lightTheme">Светлая</span>
+                        </span>
+                    </label>
+                    <label class="theme-option" data-theme="dark">
+                        <input type="radio" name="theme" value="dark" id="themeDark">
+                        <span class="theme-preview dark-theme">
+                            <span class="theme-icon">🌙</span>
+                            <span data-lang="darkTheme">Темная</span>
+                        </span>
+                    </label>
+                    <label class="theme-option" data-theme="auto">
+                        <input type="radio" name="theme" value="auto" id="themeAuto" checked>
+                        <span class="theme-preview auto-theme">
+                            <span class="theme-icon">🔄</span>
+                            <span data-lang="autoTheme">Авто</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="language-section">
+                <h4 class="section-title" data-lang="languageSection">🌐 Язык</h4>
+                <div class="language-grid">
+                    <label class="language-option" data-language="ru">
+                        <input type="radio" name="language" value="ru" id="languageRu" checked>
+                        <span class="language-preview ru-language">
+                            <span class="language-icon">🇷🇺</span>
+                            <span data-lang="russian">Русский</span>
+                        </span>
+                    </label>
+                    <label class="language-option" data-language="en">
+                        <input type="radio" name="language" value="en" id="languageEn">
+                        <span class="language-preview en-language">
+                            <span class="language-icon">🇺🇸</span>
+                            <span data-lang="english">English</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Toggle -->
+        <div class="ai-section">
+            <div class="ai-header">
+                <label class="toggle-label main-toggle">
+                    <input type="checkbox" id="enableAI">
+                    <span class="toggle-switch large"></span>
+                    <div class="toggle-info">
+                        <span class="toggle-title" data-lang="aiGeneration">🤖 ИИ генерация комментариев</span>
+                        <small data-lang="aiDescription">Автоматическое создание релевантных комментариев</small>
+                    </div>
+                </label>
+            </div>
+            
+            <!-- AI Quick Setup -->
+            <div id="aiQuickSettings" class="ai-quick" style="display: none;">
+                <div class="provider-select">
+                    <label data-lang="provider">Провайдер:</label>
+                    <select id="aiProvider" class="compact-select">
+                        <option value="openai">OpenAI</option>
+                        <option value="openrouter">OpenRouter</option>
+                        <option value="groq">Groq (быстрый инференс)</option>
+                        <option value="gemini">Google Gemini</option>
+                    </select>
+                </div>
+                
+                <!-- OpenAI Settings -->
+                <div id="openaiSettings" class="provider-config">
+                    <div class="api-key-row">
+                        <div class="api-key-input">
+                            <input type="password" id="openaiApiKey" placeholder="API ключ (sk-proj-...)" class="api-input" data-lang-placeholder="apiKey">
+                            <span class="api-validation-status" id="openaiApiKeyStatus"></span>
+                        </div>
+                        <button class="btn-test" type="button" data-lang="testBtn">Тест</button>
+                    </div>
+                    <div class="validation-message" id="openaiApiKeyMessage"></div>
+                    <div class="model-select">
+                        <label data-lang="model">Модель:</label>
+                        <select id="openaiModel" class="compact-select">
+                            <option value="gpt-4o-mini">GPT-4o Mini <span data-lang="fastCheap">(быстро, дешево)</span></option>
+                            <option value="gpt-4o">GPT-4o <span data-lang="quality">(качественно)</span></option>
+                            <option value="gpt-3.5-turbo">GPT-3.5 Turbo <span data-lang="basic">(базовая)</span></option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- OpenRouter Settings -->
+                <div id="openrouterSettings" class="provider-config" style="display: none;">
+                    <div class="api-key-row">
+                        <div class="api-key-input">
+                            <input type="password" id="openrouterApiKey" placeholder="API ключ (sk-or-v1-...)" class="api-input" data-lang-placeholder="apiKey">
+                            <span class="api-validation-status" id="openrouterApiKeyStatus"></span>
+                        </div>
+                        <button class="btn-test" type="button" data-lang="testBtn">Тест</button>
+                    </div>
+                    <div class="validation-message" id="openrouterApiKeyMessage"></div>
+                    <div class="model-select">
+                        <label data-lang="model">Модель:</label>
+                        <select id="openrouterModel" class="compact-select">
+                            <option value="anthropic/claude-3.5-sonnet:beta">Claude 3.5 Sonnet</option>
+                            <option value="openai/gpt-4o">GPT-4o</option>
+                            <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+                            <option value="meta-llama/llama-3.1-8b-instruct:free">Llama 3.1 8B (бесплатно)</option>
+                            <option value="qwen/qwen-2-7b-instruct:free">Qwen 2 7B (бесплатно)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Groq Settings -->
+                <div id="groqSettings" class="provider-config" style="display: none;">
+                    <div class="api-key-row">
+                        <div class="api-key-input">
+                            <input type="password" id="groqApiKey" placeholder="API ключ (gsk_...)" class="api-input" data-lang-placeholder="apiKey">
+                            <span class="api-validation-status" id="groqApiKeyStatus"></span>
+                        </div>
+                        <button class="btn-test" type="button" data-lang="testBtn">Тест</button>
+                    </div>
+                    <div class="validation-message" id="groqApiKeyMessage"></div>
+                    <div class="model-select">
+                        <label data-lang="model">Модель:</label>
+                        <select id="groqModel" class="compact-select">
+                            <option value="llama-3.1-8b-instant">Llama 3.1 8B Instant</option>
+                            <option value="gemma2-9b-it">Gemma2 9B IT</option>
+                            <option value="llama3-8b-8192">Llama 3 8B</option>
+                            <option value="mixtral-8x7b-32768">Mixtral 8x7B</option>
+                            <option value="custom">Своя модель...</option>
+                        </select>
+                    </div>
+                    <div class="custom-model-input" id="groqCustomModelInput" style="display: none; margin-top: 10px;">
+                        <input type="text" id="groqCustomModel" placeholder="llama-3.2-3b-preview" class="compact-input" style="width: 100%;">
+                    </div>
+                    </div>
+                </div>
+                
+                <!-- Gemini Settings -->
+                <div id="geminiSettings" class="provider-config" style="display: none;">
+                    <div class="api-key-row">
+                        <div class="api-key-input">
+                            <input type="password" id="geminiApiKey" placeholder="API ключ (AIza...)" class="api-input" data-lang-placeholder="apiKey">
+                            <span class="api-validation-status" id="geminiApiKeyStatus"></span>
+                        </div>
+                        <button class="btn-test" type="button" data-lang="testBtn">Тест</button>
+                    </div>
+                    <div class="validation-message" id="geminiApiKeyMessage"></div>
+                    <div class="model-select">
+                        <label data-lang="model">Модель:</label>
+                        <select id="geminiModel" class="compact-select">
+                            <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                            <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+                            <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                            <option value="custom">Своя модель...</option>
+                        </select>
+                    </div>
+                    <div class="custom-model-input" id="geminiCustomModelInput" style="display: none; margin-top: 10px;">
+                        <input type="text" id="geminiCustomModel" placeholder="gemini-2.5-flash-8b" class="compact-input" style="width: 100%;">
+                    </div>
+                </div>
+                
+                <div class="ai-status" id="aiStatus">
+                    <span class="status-indicator">⚪</span>
+                    <span data-lang="enterApiKey">Введите API ключ</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <button id="settingsBtn" class="btn-footer" data-lang="expandedSettings">
+                ⚙️ Расширенные настройки
+            </button>
+            <div class="footer-divider"></div>
+            <small class="footer-text" data-lang="byEvheshka">by Evheshka</small>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

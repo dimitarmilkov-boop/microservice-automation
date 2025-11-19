@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "ThreadsAI commenter - evheshka",
+  "version": "5.23",
+  "description": "Автоматизация взаимодействий в Threads.net - воссозданная версия оригинального ThreadsAI",
+  
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "background"
+  ],
+  
+  "host_permissions": [
+    "https://www.threads.net/*",
+    "https://threads.net/*",
+    "https://www.threads.com/*",
+    "https://threads.com/*"
+  ],
+  
+  "background": {
+    "service_worker": "background.js"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["https://www.threads.net/*", "https://threads.net/*", "https://www.threads.com/*", "https://threads.com/*"],
+      "js": ["ai-generator.js", "content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_end"
+    }
+  ],
+  
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ThreadsAI commenter - evheshka",
+    "default_icon": {
+      "16": "ico/icon-16.png",
+      "32": "ico/icon-48.png",
+      "48": "ico/icon-48.png",
+      "128": "ico/icon-128.png"
+    }
+  },
+  
+  "icons": {
+    "16": "ico/icon-16.png",
+    "32": "ico/icon-48.png",
+    "48": "ico/icon-48.png",
+    "128": "ico/icon-128.png"
+  },
+  
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js", "ico/*"],
+      "matches": ["https://www.threads.net/*", "https://threads.net/*", "https://www.threads.com/*", "https://threads.com/*"]
+    }
+  ]
+}

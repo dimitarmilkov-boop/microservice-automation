@@ -1,0 +1,1510 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Threads Auto Follow</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 400px;
+      min-height: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000000;
+      color: #ffffff;
+      transition: all 0.3s ease;
+    }
+
+    /* Светлая тема */
+    body.light-theme {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    .container {
+      padding: 20px;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .header p {
+      font-size: 12px;
+      opacity: 0.8;
+    }
+
+    /* Переключатель темы */
+    .theme-toggle {
+      background: #1a1a1a;
+      border: 1px solid #333333;
+      border-radius: 8px;
+      padding: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+    }
+
+    .theme-toggle:hover {
+      background: #2a2a2a;
+      border-color: #444444;
+    }
+
+    .theme-icon {
+      font-size: 16px;
+      transition: transform 0.3s ease;
+    }
+
+    .theme-toggle:hover .theme-icon {
+      transform: rotate(15deg);
+    }
+
+    /* Светлая тема - переключатель */
+    body.light-theme .theme-toggle {
+      background: #f5f5f5;
+      border-color: #e0e0e0;
+    }
+
+    body.light-theme .theme-toggle:hover {
+      background: #e8e8e8;
+      border-color: #d0d0d0;
+    }
+
+    .author-info {
+      margin-top: 8px;
+    }
+
+    .author-link {
+      color: #a8a8a8;
+      text-decoration: none;
+      font-size: 11px;
+      transition: color 0.2s ease;
+    }
+
+    .author-link:hover {
+      color: #ffffff;
+      text-decoration: underline;
+    }
+
+    .status-card {
+      background: #1a1a1a;
+      border-radius: 12px;
+      padding: 15px;
+      margin-bottom: 20px;
+      border: 1px solid #333333;
+    }
+
+    .status-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .status-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .status-label {
+      font-size: 14px;
+      color: #a8a8a8;
+    }
+
+    .status-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #333333;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: #ffffff;
+      border-radius: 3px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
+    .controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-primary {
+      background: #ffffff;
+      color: #000000;
+      font-weight: 600;
+    }
+
+    .btn-primary:hover {
+      background: #e0e0e0;
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: #1a1a1a;
+      color: #ffffff;
+      border: 1px solid #333333;
+    }
+
+    .btn-secondary:hover {
+      background: #2a2a2a;
+      border-color: #444444;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    .settings {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid #333333;
+    }
+
+    .setting-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .setting-label {
+      font-size: 13px;
+      color: #a8a8a8;
+    }
+
+    .setting-input {
+      width: 60px;
+      padding: 4px 8px;
+      border: 1px solid #333333;
+      border-radius: 4px;
+      background: #1a1a1a;
+      color: #ffffff;
+      text-align: center;
+    }
+
+    .setting-input:focus {
+      outline: none;
+      border-color: #555555;
+    }
+
+    .setting-input::placeholder {
+      color: #666666;
+    }
+
+    input[type="checkbox"] {
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #444444;
+      border-radius: 3px;
+      background: #1a1a1a;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    input[type="checkbox"]:checked {
+      border-color: #ffffff;
+      background: #ffffff;
+    }
+
+    input[type="checkbox"]:checked::after {
+      content: '✓';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #000000;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    input[type="checkbox"]:hover {
+      border-color: #666666;
+    }
+
+    input[type="radio"] {
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #444444;
+      border-radius: 50%;
+      background: #1a1a1a;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    input[type="radio"]:checked {
+      border-color: #ffffff;
+      background: #ffffff;
+    }
+
+    input[type="radio"]:checked::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #000000;
+    }
+
+    input[type="radio"]:hover {
+      border-color: #666666;
+    }
+
+    .delay-input {
+      width: 60px !important;
+      min-width: 60px;
+      text-align: center;
+      font-weight: 500;
+      font-size: 13px;
+    }
+
+          .delay-input:focus {
+            border-color: #ffffff;
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+          }
+
+    .setting-textarea {
+      width: 100%;
+      min-height: 60px;
+      padding: 8px 12px;
+      background: #2a2a2a;
+      border: 1px solid #444444;
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 12px;
+      font-family: inherit;
+      resize: vertical;
+      transition: all 0.2s ease;
+    }
+
+    .setting-textarea:focus {
+      outline: none;
+      border-color: #ffffff;
+      box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+    }
+
+    .setting-textarea::placeholder {
+      color: #888888;
+    }
+
+    /* Компактные стили */
+    .compact-filters {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin: 12px 0;
+      padding: 12px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      border: 1px solid #333333;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .filter-group-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .filter-options-compact {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .filter-option-compact {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: all 0.2s ease;
+    }
+
+    .filter-option-compact:hover {
+      background: #2a2a2a;
+    }
+
+    .filter-option-compact input[type="radio"] {
+      width: 12px;
+      height: 12px;
+      border: 1px solid #444444;
+    }
+
+    .filter-option-compact input[type="radio"]:checked::after {
+      width: 4px;
+      height: 4px;
+    }
+
+    .filter-label-compact {
+      color: #a8a8a8;
+      font-size: 11px;
+      cursor: pointer;
+      transition: color 0.2s ease;
+    }
+
+    .filter-option-compact:hover .filter-label-compact {
+      color: #ffffff;
+    }
+
+    .filter-option-compact input[type="radio"]:checked + .filter-label-compact {
+      color: #ffffff;
+    }
+
+    .lists-section {
+      margin-top: 12px;
+      padding: 12px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      border: 1px solid #333333;
+    }
+
+    .setting-textarea-compact {
+      width: 100%;
+      min-height: 60px;
+      padding: 10px 12px;
+      background: #2a2a2a;
+      border: 1px solid #444444;
+      border-radius: 6px;
+      color: #ffffff;
+      font-size: 12px;
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      resize: vertical;
+      transition: all 0.2s ease;
+      line-height: 1.5;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    .setting-textarea-compact:hover {
+      border-color: #666666;
+      background: #2d2d2d;
+    }
+
+    .setting-textarea-compact:focus {
+      outline: none;
+      border-color: #007bff;
+      background: #2d2d2d;
+      box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2), inset 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    .setting-textarea-compact::placeholder {
+      color: #888888;
+    }
+    
+    .setting-label-small {
+      font-size: 11px;
+      color: #666666;
+      margin-left: 5px;
+    }
+
+    .filter-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .filter-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 6px 0;
+      transition: all 0.2s ease;
+    }
+
+    .filter-option:hover {
+      background: #2a2a2a;
+      border-radius: 6px;
+      padding: 6px 8px;
+    }
+
+    .filter-option input[type="radio"] {
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #444444;
+      border-radius: 50%;
+      background: #1a1a1a;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s ease;
+    }
+
+    .filter-option input[type="radio"]:checked {
+      border-color: #ffffff;
+      background: #ffffff;
+    }
+
+    .filter-option input[type="radio"]:checked::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #000000;
+    }
+
+    .filter-label {
+      color: #a8a8a8;
+      font-size: 13px;
+      cursor: pointer;
+      transition: color 0.2s ease;
+    }
+
+    .filter-option:hover .filter-label {
+      color: #ffffff;
+    }
+
+    .filter-option input[type="radio"]:checked + .filter-label {
+      color: #ffffff;
+    }
+
+    .instructions {
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 15px;
+      font-size: 12px;
+      line-height: 1.4;
+      color: #a8a8a8;
+      border: 1px solid #333333;
+    }
+
+    .instructions h3 {
+      margin-bottom: 8px;
+      font-size: 13px;
+      color: #ffffff;
+    }
+
+    .instructions ol {
+      padding-left: 15px;
+    }
+
+    .instructions li {
+      margin-bottom: 4px;
+    }
+
+    .status-indicator {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 6px;
+    }
+
+    .status-running {
+      background: #ffffff;
+      animation: pulse 1.5s infinite;
+    }
+
+    .status-stopped {
+      background: #666666;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+
+    /* ===== СВЕТЛАЯ ТЕМА ===== */
+    
+    /* Основные элементы */
+    body.light-theme .status-card {
+      background: #f8f9fa;
+      border-color: #e9ecef;
+    }
+
+    body.light-theme .status-label {
+      color: #6c757d;
+    }
+
+    body.light-theme .status-value {
+      color: #000000;
+    }
+
+    body.light-theme .progress-bar {
+      background: #e9ecef;
+    }
+
+    body.light-theme .progress-fill {
+      background: #007bff;
+    }
+
+    /* Кнопки */
+    body.light-theme .btn-primary {
+      background: #007bff;
+      color: #ffffff;
+    }
+
+    body.light-theme .btn-primary:hover {
+      background: #0056b3;
+    }
+
+    body.light-theme .btn-secondary {
+      background: #f8f9fa;
+      color: #000000;
+      border-color: #e9ecef;
+    }
+
+    body.light-theme .btn-secondary:hover {
+      background: #e9ecef;
+      border-color: #dee2e6;
+    }
+
+    /* Настройки */
+    body.light-theme .settings {
+      border-top-color: #e9ecef;
+    }
+
+    body.light-theme .setting-label {
+      color: #6c757d;
+    }
+
+    body.light-theme .setting-input {
+      background: #f8f9fa;
+      border-color: #e9ecef;
+      color: #000000;
+    }
+
+    body.light-theme .setting-input:focus {
+      border-color: #007bff;
+    }
+
+    body.light-theme .setting-input::placeholder {
+      color: #adb5bd;
+    }
+
+    /* Чекбоксы и радио */
+    body.light-theme input[type="checkbox"] {
+      border-color: #adb5bd;
+      background: #f8f9fa;
+    }
+
+    body.light-theme input[type="checkbox"]:checked {
+      border-color: #007bff;
+      background: #007bff;
+    }
+
+    body.light-theme input[type="checkbox"]:hover {
+      border-color: #6c757d;
+    }
+
+    body.light-theme input[type="radio"] {
+      border-color: #adb5bd;
+      background: #f8f9fa;
+    }
+
+    body.light-theme input[type="radio"]:checked {
+      border-color: #007bff;
+      background: #007bff;
+    }
+
+    body.light-theme input[type="radio"]:hover {
+      border-color: #6c757d;
+    }
+
+    /* Компактные фильтры */
+    body.light-theme .compact-filters {
+      background: #f8f9fa;
+      border-color: #e9ecef;
+    }
+
+    body.light-theme .filter-group-title {
+      color: #000000;
+    }
+
+    body.light-theme .filter-option-compact:hover {
+      background: #e9ecef;
+    }
+
+    body.light-theme .filter-label-compact {
+      color: #6c757d;
+    }
+
+    body.light-theme .filter-option-compact:hover .filter-label-compact {
+      color: #000000;
+    }
+
+    body.light-theme .filter-option-compact input[type="radio"]:checked + .filter-label-compact {
+      color: #000000;
+    }
+
+    body.light-theme .filter-option-compact input[type="radio"] {
+      border-color: #adb5bd;
+      background: #f8f9fa;
+    }
+
+    body.light-theme .filter-option-compact input[type="radio"]:checked {
+      border-color: #007bff;
+      background: #007bff;
+    }
+
+    /* Список пользователей */
+    .user-list-section {
+      margin-top: 12px;
+      padding: 12px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      border: 1px solid #333333;
+    }
+
+    .section-header {
+      margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #333333;
+    }
+
+    .section-header h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #ffffff;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-header {
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.2s ease;
+    }
+
+    .section-header:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      padding: 8px 4px;
+    }
+
+    .collapse-btn {
+      background: none;
+      border: none;
+      color: #ffffff;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 3px;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      margin-left: auto;
+    }
+
+    .collapse-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .section-content {
+      transition: all 0.3s ease;
+      overflow: hidden;
+    }
+
+    .section-content.collapsed {
+      max-height: 0;
+      margin: 0;
+      padding: 0;
+      opacity: 0;
+    }
+
+    .section-content.expanded {
+      max-height: 1000px;
+      opacity: 1;
+    }
+
+    /* Основные настройки */
+    .main-controls-section {
+      margin-bottom: 16px;
+      padding: 15px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      border: 1px solid #333333;
+    }
+
+    /* Секция фильтров */
+    .filters-section {
+      margin-top: 12px;
+      margin-bottom: 16px;
+      padding: 15px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      border: 1px solid #333333;
+    }
+
+    .filters-header {
+      margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #333333;
+    }
+
+    .filters-header h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #ffffff;
+      margin: 0;
+    }
+
+    /* Компактные фильтры в стиле других секций */
+    .compact-filters-inline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      padding: 12px 0;
+    }
+
+    .filter-group-compact {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 120px;
+    }
+
+    .filter-group-title-compact {
+      font-size: 12px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .filter-options-compact {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .filter-option-compact {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      padding: 2px 0;
+      border-radius: 3px;
+      transition: background-color 0.2s ease;
+    }
+
+    .filter-option-compact:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .filter-option-compact input[type="radio"] {
+      margin: 0;
+      width: 12px;
+      height: 12px;
+    }
+
+    .filter-label-compact {
+      font-size: 11px;
+      color: #ffffff;
+      user-select: none;
+    }
+
+    /* Light theme styles for compact filters */
+    body.light-theme .filter-group-title-compact {
+      color: #000000;
+    }
+
+    body.light-theme .filter-option-compact:hover {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    body.light-theme .filter-label-compact {
+      color: #000000;
+    }
+
+    /* Light theme styles for main controls section */
+    body.light-theme .main-controls-section {
+      background: #f8f9fa;
+      border-color: #e9ecef;
+    }
+
+    /* Light theme styles for filters section */
+    body.light-theme .filters-section {
+      background: #f8f9fa;
+      border-color: #e9ecef;
+    }
+
+    body.light-theme .filters-header {
+      border-bottom-color: #e9ecef;
+    }
+
+    body.light-theme .filters-header h3 {
+      color: #000000;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .input-hint {
+      margin-top: 6px;
+    }
+
+    .input-hint small {
+      color: #888888;
+      font-size: 10px;
+      font-style: italic;
+    }
+
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 8px 0;
+    }
+
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #444444;
+      transition: 0.3s;
+      border-radius: 24px;
+    }
+
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.3s;
+      border-radius: 50%;
+    }
+
+    .toggle-switch input:checked + .toggle-slider {
+      background-color: #007bff;
+    }
+
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(26px);
+    }
+
+    .toggle-label {
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .auto-parse-btn {
+      width: 100%;
+      padding: 8px 12px;
+      background: linear-gradient(135deg, #28a745, #1e7e34);
+      color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin: 8px 0;
+    }
+
+    .auto-parse-btn:hover {
+      background: linear-gradient(135deg, #1e7e34, #155724);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+    }
+
+    .auto-parse-btn:active {
+      transform: translateY(0);
+    }
+
+    .auto-parse-btn:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    /* Segmented control for run mode */
+    .segmented {
+      display: inline-flex;
+      border: 1px solid #333333;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #1a1a1a;
+    }
+
+    .segmented-btn {
+      padding: 8px 12px;
+      border: none;
+      background: transparent;
+      color: #ffffff;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .segmented-btn:not(.active):hover {
+      background: #2a2a2a;
+    }
+
+    .segmented-btn.active {
+      background: #ffffff;
+      color: #000000;
+    }
+
+    /* Стили для прогресса парсинга */
+    .parsing-progress {
+      width: 100%;
+      margin: 10px 0;
+    }
+
+    .parsing-status-text {
+      font-size: 12px;
+      color: #28a745;
+      font-weight: 600;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .parsing-progress-bar {
+      width: 100%;
+      height: 6px;
+      background: #333333;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 8px;
+    }
+
+    .parsing-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #28a745, #20c997);
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+
+    .parsing-stats {
+      font-size: 11px;
+      color: #a8a8a8;
+      text-align: center;
+    }
+
+    .parsing-section {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #1a1a1a;
+      border-radius: 8px;
+      border: 1px solid #333333;
+    }
+
+    .user-list-section .setting-textarea-compact {
+      min-height: 100px;
+    }
+
+    .user-list-info small {
+      color: #888888;
+      font-size: 10px;
+    }
+
+
+    /* Списки */
+    body.light-theme .lists-section {
+      background: #f8f9fa;
+      border-color: #e9ecef;
+    }
+
+    body.light-theme .user-list-section {
+      background: #f8f9fa;
+      border-color: #e9ecef;
+    }
+
+    body.light-theme .user-list-info small {
+      color: #6c757d;
+    }
+
+
+    body.light-theme .setting-textarea-compact {
+      background: #ffffff;
+      border-color: #e9ecef;
+      color: #000000;
+      box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    body.light-theme .setting-textarea-compact:hover {
+      border-color: #ced4da;
+      background: #f8f9fa;
+    }
+
+    body.light-theme .setting-textarea-compact:focus {
+      border-color: #007bff;
+      background: #f8f9fa;
+      box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.2), inset 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    body.light-theme .setting-textarea-compact::placeholder {
+      color: #adb5bd;
+    }
+
+    body.light-theme .section-header {
+      border-bottom-color: #e9ecef;
+    }
+
+    body.light-theme .section-header h3 {
+      color: #000000;
+    }
+
+    body.light-theme .section-header:hover {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    body.light-theme .collapse-btn {
+      color: #000000;
+    }
+
+    body.light-theme .collapse-btn:hover {
+      background: rgba(0, 0, 0, 0.1);
+    }
+
+    body.light-theme .input-hint small {
+      color: #6c757d;
+    }
+
+    body.light-theme .toggle-slider {
+      background-color: #ced4da;
+    }
+
+    body.light-theme .toggle-switch input:checked + .toggle-slider {
+      background-color: #007bff;
+    }
+
+    body.light-theme .toggle-label {
+      color: #000000;
+    }
+
+    body.light-theme .auto-parse-btn {
+      background: linear-gradient(135deg, #28a745, #1e7e34);
+      color: #ffffff;
+    }
+
+    body.light-theme .auto-parse-btn:hover {
+      background: linear-gradient(135deg, #1e7e34, #155724);
+    }
+
+    /* Светлая тема для прогресса парсинга */
+    body.light-theme .parsing-progress-bar {
+      background: #e9ecef;
+    }
+
+    body.light-theme .parsing-stats {
+      color: #6c757d;
+    }
+
+    body.light-theme .parsing-section {
+      background: #f8f9fa;
+      border-color: #e9ecef;
+    }
+
+    /* Инструкции */
+    body.light-theme .instructions {
+      background: #f8f9fa;
+      border-color: #e9ecef;
+      color: #6c757d;
+    }
+
+    body.light-theme .instructions h3 {
+      color: #000000;
+    }
+
+    /* Автор */
+    body.light-theme .author-link {
+      color: #6c757d;
+    }
+
+    body.light-theme .author-link:hover {
+      color: #000000;
+    }
+
+    /* Статус индикатор */
+    body.light-theme .status-running {
+      background: #007bff;
+    }
+
+    body.light-theme .status-stopped {
+      background: #6c757d;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="header-top">
+        <h1>🤖 Threads Auto Follow</h1>
+        <button id="theme-toggle" class="theme-toggle" title="Переключить тему">
+          <span class="theme-icon">🌙</span>
+        </button>
+      </div>
+      <p>Автоматическая подписка на пользователей</p>
+      <div class="author-info">
+        <a href="https://t.me/+ZDRFEJJuuoQ2ZGEy" target="_blank" class="author-link">
+          👨‍💻 Автор: Evheshka
+        </a>
+      </div>
+    </div>
+
+    <div class="status-card">
+      <div class="status-item">
+        <span class="status-label">
+          <span id="status-indicator" class="status-indicator status-stopped"></span>
+          Статус:
+        </span>
+        <span id="status-text" class="status-value">Остановлено</span>
+      </div>
+      
+      <div class="status-item">
+        <span class="status-label">Процесс:</span>
+        <span id="subscribed-count" class="status-value">0</span>
+      </div>
+      
+      <div class="status-item">
+        <span class="status-label">Лимит:</span>
+        <span id="target-count" class="status-value">50</span>
+      </div>
+
+      <div class="progress-bar">
+        <div id="progress-fill" class="progress-fill"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="start-btn" class="btn btn-primary">
+        ▶️ Начать подписку
+      </button>
+      <button id="view-history-btn" class="btn btn-secondary">
+        📋 История подписок
+      </button>
+      <button id="scan-dom-btn" class="btn btn-secondary">
+        🔍 Сканировать DOM
+      </button>
+    </div>
+
+        <div class="settings">
+          <!-- Основные настройки -->
+          <div class="main-controls-section">
+            <div class="setting-item">
+              <span class="setting-label">Задержка:</span>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <input type="number" id="min-delay-input" class="setting-input delay-input" value="2" min="1" max="30">
+                <span style="color: #a8a8a8; font-size: 12px;">—</span>
+                <input type="number" id="max-delay-input" class="setting-input delay-input" value="8" min="1" max="30">
+                <span style="color: #a8a8a8; font-size: 11px;">сек</span>
+              </div>
+            </div>
+            <div class="setting-item">
+              <span class="setting-label">Лимит:</span>
+              <input type="number" id="max-subscriptions-input" class="setting-input" value="50" min="1" max="1000">
+              <span class="setting-label-small">польз.</span>
+            </div>
+            <div class="setting-item">
+              <span class="setting-label">Тип запуска:</span>
+              <div id="run-mode-switch" class="segmented">
+                <button id="run-mode-follow" class="segmented-btn active" type="button">Подписка</button>
+                <button id="run-mode-unfollow" class="segmented-btn" type="button">Отписка</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Компактные фильтры -->
+          <div class="filters-section">
+            <div class="section-header" data-section="filters-section">
+              <h3>🔍 Фильтры</h3>
+              <button class="collapse-btn" id="filters-section-btn">▶</button>
+            </div>
+            
+            <div class="section-content collapsed" id="filters-section">
+            <div class="compact-filters-inline">
+              <!-- Аватары -->
+              <div class="filter-group-compact">
+                <span class="filter-group-title-compact">Аватары:</span>
+                <div class="filter-options-compact">
+                  <label class="filter-option-compact">
+                    <input type="radio" name="avatar-filter" value="all" checked>
+                    <span class="filter-label-compact">Все</span>
+                  </label>
+                  <label class="filter-option-compact">
+                    <input type="radio" name="avatar-filter" value="with-avatar">
+                    <span class="filter-label-compact">С аватаркой</span>
+                  </label>
+                  <label class="filter-option-compact">
+                    <input type="radio" name="avatar-filter" value="without-avatar">
+                    <span class="filter-label-compact">Без аватарки</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Имена -->
+              <div class="filter-group-compact">
+                <span class="filter-group-title-compact">Имена:</span>
+                <div class="filter-options-compact">
+                  <label class="filter-option-compact">
+                    <input type="radio" name="name-filter" value="all" checked>
+                    <span class="filter-label-compact">Все</span>
+                  </label>
+                  <label class="filter-option-compact">
+                    <input type="radio" name="name-filter" value="with-name">
+                    <span class="filter-label-compact">С именем</span>
+                  </label>
+                  <label class="filter-option-compact">
+                    <input type="radio" name="name-filter" value="without-name">
+                    <span class="filter-label-compact">Без имени</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Язык -->
+              <div class="filter-group-compact">
+                <span class="filter-group-title-compact">Язык:</span>
+                <div class="filter-options-compact">
+                  <label class="filter-option-compact">
+                    <input type="radio" name="name-language" value="all" checked>
+                    <span class="filter-label-compact">Любой</span>
+                  </label>
+                  <label class="filter-option-compact">
+                    <input type="radio" name="name-language" value="cyrillic">
+                    <span class="filter-label-compact">Кириллица</span>
+                  </label>
+                  <label class="filter-option-compact">
+                    <input type="radio" name="name-language" value="latin">
+                    <span class="filter-label-compact">Латиница</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Онлайн статус -->
+              <div class="filter-group-compact">
+                <span class="filter-group-title-compact">Онлайн:</span>
+                <div class="filter-options-compact">
+                  <label class="filter-option-compact">
+                    <input type="radio" name="online-filter" value="all" checked>
+                    <span class="filter-label-compact">Все</span>
+                  </label>
+                  <label class="filter-option-compact">
+                    <input type="radio" name="online-filter" value="online-only">
+                    <span class="filter-label-compact">🟢 Онлайн</span>
+                  </label>
+                  <label class="filter-option-compact">
+                    <input type="radio" name="online-filter" value="offline-only">
+                    <span class="filter-label-compact">⚫ Оффлайн</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <!-- Парсинг подписчиков -->
+          <div class="parsing-section">
+            <div class="section-header" data-section="parsing-section">
+              <h3>🔍 Парсинг подписчиков</h3>
+              <button class="collapse-btn" id="parsing-section-btn">▶</button>
+            </div>
+            
+            <div class="section-content collapsed" id="parsing-section">
+            <div class="setting-item">
+              <div class="input-group">
+                <label class="setting-label">⚡ Автопарсинг:</label>
+                <div class="toggle-container">
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="enable-follower-parsing">
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <span class="toggle-label">Включить автопарсинг</span>
+                </div>
+                <div class="input-hint">
+                  <small>Автоматически парсить логины при открытии списка подписчиков</small>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-item">
+              <div class="input-group">
+                <button id="auto-parse-btn" class="auto-parse-btn">🚀 Парсить текущий список</button>
+                <div class="input-hint">
+                  <small>Парсить подписчиков из открытого модального окна</small>
+                </div>
+              </div>
+            </div>
+
+            <!-- Статус парсинга -->
+            <div class="setting-item" id="parsing-status" style="display: none;">
+              <div class="input-group">
+                <div class="parsing-progress">
+                  <div class="parsing-status-text" id="parsing-status-text">Парсинг...</div>
+                  <div class="parsing-progress-bar">
+                    <div class="parsing-progress-fill" id="parsing-progress-fill"></div>
+                  </div>
+                  <div class="parsing-stats" id="parsing-stats">Найдено: 0 пользователей</div>
+                </div>
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <!-- Список пользователей для подписки -->
+          <div class="user-list-section">
+            <div class="section-header" data-section="user-management-section">
+              <h3>👥 Управление пользователями</h3>
+              <button class="collapse-btn" id="user-management-section-btn">▶</button>
+            </div>
+            
+            <div class="section-content collapsed" id="user-management-section">
+            <div class="setting-item">
+              <div class="input-group">
+                <label class="setting-label">📝 Список пользователей:</label>
+                <textarea id="user-list" class="setting-textarea-compact" placeholder="username1&#10;username2&#10;username3&#10;&#10;Пример:&#10;john_doe&#10;mary_smith&#10;alex123"></textarea>
+                <div class="input-hint">
+                  <small>Введите usernames пользователей (по одному на строку)</small>
+                </div>
+              </div>
+            </div>
+            
+            <div class="setting-item">
+              <div class="input-group">
+                <label class="setting-label">🚫 Игнор-список:</label>
+                <textarea id="ignore-list" class="setting-textarea-compact" placeholder="username1&#10;username2&#10;username3&#10;&#10;Пример:&#10;bot_user&#10;spam_account&#10;fake_profile"></textarea>
+                <div class="input-hint">
+                  <small>Введите usernames пользователей для игнорирования (по одному на строку)</small>
+                </div>
+              </div>
+            </div>
+            </div>
+          </div>
+
+          <!-- Фильтры по ключевым словам -->
+          <div class="lists-section">
+            <div class="section-header" data-section="keyword-filters-section">
+              <h3>🔍 Фильтры по ключевым словам</h3>
+              <button class="collapse-btn" id="keyword-filters-section-btn">▶</button>
+            </div>
+            
+            <div class="section-content collapsed" id="keyword-filters-section">
+            <div class="setting-item">
+              <div class="input-group">
+                <label class="setting-label">✅ Белый список:</label>
+                <textarea id="whitelist-keywords" class="setting-textarea-compact" placeholder="ukraine&#10;kyiv&#10;lviv&#10;&#10;Пример:&#10;ukraine&#10;kyiv&#10;lviv&#10;kharkiv"></textarea>
+                <div class="input-hint">
+                  <small>Ключевые слова для обязательного включения</small>
+                </div>
+              </div>
+            </div>
+            
+            <div class="setting-item">
+              <div class="input-group">
+                <label class="setting-label">❌ Черный список:</label>
+                <textarea id="blacklist-keywords" class="setting-textarea-compact" placeholder="bot&#10;spam&#10;fake&#10;&#10;Пример:&#10;bot&#10;spam&#10;fake&#10;scam"></textarea>
+                <div class="input-hint">
+                  <small>Ключевые слова для исключения</small>
+                </div>
+              </div>
+            </div>
+            </div>
+          </div>
+        </div>
+
+    <div class="instructions">
+      <h3>📋 Инструкция:</h3>
+      <ol>
+        <li>Откройте профиль пользователя в Threads</li>
+        <li>Нажмите на количество подписчиков</li>
+        <li>Укажите количество пользователей для подписки</li>
+        <li>Нажмите "▶️ Начать подписку"</li>
+      </ol>
+      <p style="margin-top: 10px; font-size: 11px; opacity: 0.8;">
+        💡 Расширение автоматически прокрутит список и подпишется на указанное количество пользователей
+      </p>
+    </div>
+  </div>
+
+
+  <script src="popup.js"></script>
+</body>
+</html>
