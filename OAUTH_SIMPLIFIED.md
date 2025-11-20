@@ -10,6 +10,7 @@
 Simplify the OAuth automation to **only navigate to `/oauth2/authorize` and click "Authorize"** - no automatic login, no redirect handling, no complexity.
 
 **IMPORTANT**: This microservice is a **browser clicking service only**. It does NOT handle OAuth tokens:
+
 - ❌ Does NOT capture tokens
 - ❌ Does NOT exchange authorization codes
 - ❌ Does NOT store tokens
@@ -25,6 +26,7 @@ Simplify the OAuth automation to **only navigate to `/oauth2/authorize` and clic
 **File**: `services/x-auth-service/app/automation/selenium_oauth_automation.py`
 
 **Removed from `automate_oauth_for_profile()` (Lines 369-470)**:
+
 - ❌ 50+ lines of automatic login code
 - ❌ Login credential retrieval
 - ❌ Password entry automation
@@ -33,9 +35,11 @@ Simplify the OAuth automation to **only navigate to `/oauth2/authorize` and clic
 - ❌ Login retry loops
 
 **Added**:
+
 - ✅ Simple state check: If not on authorization page → Log state/URL → FAIL
 
 **Before**:
+
 ```python
 while page_state == "login_form" and login_attempts < max_login_attempts:
     login_attempts += 1
@@ -45,6 +49,7 @@ while page_state == "login_form" and login_attempts < max_login_attempts:
 ```
 
 **After**:
+
 ```python
 if page_state != "authorization_form":
     error = f"Not on authorization page. Current state: {page_state}. Current URL: {driver.current_url}"
@@ -60,10 +65,12 @@ if page_state != "authorization_form":
 **File**: `services/x-auth-service/app/automation/selenium_oauth_automation.py`
 
 **Removed from `automate_bulk_oauth_with_single_browser()` (Lines 207-290)**:
+
 - ❌ Login/logout flow between accounts
 - ❌ Credential switching logic
 
 **Removed from `_process_single_account_oauth()` (Lines 321-360)**:
+
 - ❌ Automatic login fallback
 - ❌ Login state handling
 
@@ -130,6 +137,7 @@ from shared.logging_config import get_logger
 ```
 
 **After the microservice finishes**:
+
 ```
 X redirects browser to: https://aiott.pro/auth/twitter/oauth2/callback?code=xxx&state=yyy
    ↓
@@ -141,6 +149,7 @@ AIOTT backend:
 ```
 
 ### **No More**:
+
 - ❌ Automatic login
 - ❌ Redirect handling
 - ❌2FA automation
@@ -226,11 +235,13 @@ ERROR: Not on authorization page
 ## 📂 Files Modified
 
 1. **`services/x-auth-service/app/automation/selenium_oauth_automation.py`**
+
    - Removed automatic login logic from `automate_oauth_for_profile()` (lines 460-509)
    - Simplified `_process_single_account_oauth()` (lines 341-360)
    - Updated docstrings to reflect simplified flow
 
 2. **`services/x-auth-service/app/workers/x_worker.py`**
+
    - Added Python path setup to fix `shared` module import (lines 14-17)
 
 3. **Updated docstrings** in:
@@ -299,6 +310,7 @@ TWITTER_CLIENT_SECRET=your_client_secret
 ## 🏗️ Architecture Clarification
 
 ### **Microservice Responsibility (x-auth-service)**:
+
 ```
 ┌─────────────────────────────────────┐
 │   X Auth Microservice               │
@@ -312,6 +324,7 @@ TWITTER_CLIENT_SECRET=your_client_secret
 ```
 
 ### **AIOTT Backend Responsibility**:
+
 ```
 ┌─────────────────────────────────────┐
 │   AIOTT Backend                     │
@@ -326,12 +339,14 @@ TWITTER_CLIENT_SECRET=your_client_secret
 ```
 
 **This microservice does NOT**:
+
 - ❌ Capture OAuth tokens
 - ❌ Exchange authorization codes
 - ❌ Store tokens in database
 - ❌ Call token endpoints
 
 **It ONLY**:
+
 - ✅ Opens browser
 - ✅ Navigates to authorize page
 - ✅ Clicks authorize button
@@ -360,12 +375,14 @@ TWITTER_CLIENT_SECRET=your_client_secret
 ## 🔄 Migration from Old Flow
 
 ### **Old Behavior**:
+
 - Navigate to OAuth URL
 - If redirected to login → Automatically login
 - Re-navigate to OAuth URL
 - Click authorize
 
 ### **New Behavior**:
+
 - Navigate to OAuth URL
 - If on authorization page → Click authorize → Success
 - If NOT on authorization page → Log state and URL → Fail
