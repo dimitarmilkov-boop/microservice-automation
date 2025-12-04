@@ -183,6 +183,19 @@ profile_*
 gologin_profile_*
 
 # ========================================
+# Screenshots & Debug Files
+# ========================================
+screenshots/
+**/screenshots/
+*.png
+*.jpg
+*.jpeg
+*.gif
+**/page_source_*.html
+**/*debug*.html
+**/*page_source*.html
+
+# ========================================
 # Temporary Files
 # ========================================
 *.tmp
