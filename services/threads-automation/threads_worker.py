@@ -40,6 +40,7 @@ class ThreadsWorker:
 
     def start(self):
         """Main automation entry point"""
+        print(f"[SESSION START] Profile: {self.profile_id}")
         logger.info(f"Starting session {self.session_id} for profile {self.profile_id}")
         
         # 1. Create Session Record
@@ -52,6 +53,7 @@ class ThreadsWorker:
                 return
 
             # 3. Launch Browser
+            print("[1/4] Launching browser...")
             with GoLoginSession(self.gologin, self.profile_id) as session:
                 driver = session['driver']
                 actions = ThreadsActions(driver)
@@ -64,12 +66,22 @@ class ThreadsWorker:
             self.stats["errors"] += 1
             self.db.log_action(self.session_id, self.profile_id, "session_error", None, "failed", str(e))
         finally:
+            print(f"[4/4] Session complete. Stats: {self.stats}")
             self._record_session_end()
 
     def _run_automation_loop(self, driver, actions):
         """Core logic: Scroll feed, filter users/posts, execute actions"""
+        print("[2/4] Navigating to threads.com...")
         driver.get("https://www.threads.com/")
-        time.sleep(5) # Wait for load
+        time.sleep(15) # Wait for load
+        print(f"[2/4] Page loaded. URL: {driver.current_url}")
+        print(f"[2/4] Title: {driver.title}")
+        # Page analysis
+        from selenium.webdriver.common.by import By
+        all_buttons = driver.find_elements(By.TAG_NAME, "button")
+        all_divs_btn = driver.find_elements(By.CSS_SELECTOR, "div[role=button]")
+        follow_text = driver.find_elements(By.XPATH, '//*//*[contains(text(), "Follow")]')
+        print(f"[DEBUG] Page analysis: {len(all_buttons)} buttons, {len(all_divs_btn)} div[role=button], {len(follow_text)} elements with Follow text")
         
         # Find Follow Buttons (Modal or Feed)
         # For simplicity, we assume we are on a feed or following list
@@ -84,7 +96,9 @@ class ThreadsWorker:
             # In a real scenario, we'd look for Post containers to do Like/Comment too
             
             # --- Auto-Follow Logic ---
+            print("[3/4] Looking for Follow buttons...")
             buttons = actions.find_follow_buttons(driver)
+            print(f"[3/4] Found {len(buttons)} Follow buttons")
             for btn in buttons:
                 if processed_count >= max_actions: break
                 
@@ -115,6 +129,18 @@ class ThreadsWorker:
             
             # Break if no new actions found (simple exit condition)
             if len(buttons) == 0:
+                # Save screenshot and page source before closing
+                screenshot_path = f"screenshots/debug_{self.session_id[:8]}.png"
+                try:
+                    driver.save_screenshot(screenshot_path)
+                    print(f"[DEBUG] Screenshot saved: {screenshot_path}")
+                except: pass
+                try:
+                    with open(f"screenshots/page_source_{self.session_id[:8]}.html", "w", encoding="utf-8") as f:
+                        f.write(driver.page_source)
+                    print(f"[DEBUG] Page source saved")
+                except: pass
+                print("[3/4] No Follow buttons found - stopping")
                 logger.info("No targets found, stopping.")
                 break
 
