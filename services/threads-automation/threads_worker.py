@@ -1,6 +1,7 @@
 """
 Threads Automation Worker
 Orchestrates GoLogin sessions and executes automation actions based on settings.
+Follow first, then Like each post.
 """
 import sys
 import os
@@ -49,8 +50,8 @@ class ThreadsWorker:
             "errors": 0
         }
         
-        # Track liked usernames to avoid duplicates
-        self.liked_users = set()
+        # Track processed users to avoid duplicates
+        self.processed_users = set()
 
     def take_screenshot(self, driver, name):
         """Save screenshot for debugging and proof"""
@@ -65,39 +66,21 @@ class ThreadsWorker:
             print(f"[ERROR] Screenshot failed: {e}")
             return None
 
-    def _extract_username_from_like(self, like_button):
-        """Extract the username of the post author from a Like button context"""
+    def _extract_username_from_post(self, element):
+        """Extract username from a post element by finding nearby links"""
         try:
-            # Strategy 1: Go up to find post container, then find username link
-            try:
-                parent = like_button
-                for _ in range(15):  # Go up max 15 levels
-                    parent = parent.find_element(By.XPATH, '..')
-                    links = parent.find_elements(By.XPATH, './/a[contains(@href, "/@")]')
-                    if links:
-                        href = links[0].get_attribute('href')
-                        username = href.split('/@')[-1].split('/')[0].split('?')[0]
-                        if username and username != 'threads.net':
-                            return username
-            except:
-                pass
-            
-            # Strategy 2: Find any nearby span with username pattern
-            try:
-                parent = like_button
-                for _ in range(10):
-                    parent = parent.find_element(By.XPATH, '..')
-                    spans = parent.find_elements(By.XPATH, './/span[contains(@class, "x1lliihq")]')
-                    for span in spans:
-                        text = span.text.strip()
-                        if text and not ' ' in text and len(text) < 30:
-                            return text
-            except:
-                pass
-            
-            return "unknown"
-        except Exception as e:
-            return "unknown"
+            parent = element
+            for _ in range(15):
+                parent = parent.find_element(By.XPATH, '..')
+                links = parent.find_elements(By.XPATH, './/a[contains(@href, "/@")]')
+                if links:
+                    href = links[0].get_attribute('href')
+                    username = href.split('/@')[-1].split('/')[0].split('?')[0]
+                    if username and username not in ['threads.net', 'threads.com', '']:
+                        return username
+        except:
+            pass
+        return "unknown"
 
     def _log_to_file(self, action_type, username, extra=""):
         """Log action to permanent file"""
@@ -105,74 +88,108 @@ class ThreadsWorker:
             log_file = self.log_dir / f'actions_{datetime.now().strftime("%Y%m%d")}.log'
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             with open(log_file, 'a', encoding='utf-8') as f:
-                f.write(f"[{timestamp}] {action_type.upper():8} | @{username:20} | session:{self.session_id[:8]} | {extra}\n")
+                f.write(f"[{timestamp}] {action_type.upper():8} | @{username:25} | session:{self.session_id[:8]} | {extra}\n")
+            print(f"[LOG] {action_type.upper()} @{username} -> {log_file.name}")
         except Exception as e:
             print(f"[ERROR] Log to file failed: {e}")
 
-    def _find_follow_button_for_post(self, like_button, driver):
-        """Find the Follow button (+ icon) for the same post as the Like button"""
+    def _find_plus_button_for_post(self, like_button, driver):
+        """
+        Find the + button (small 16x16 icon near avatar) for a post.
+        This button opens a popup where we can click Follow.
+        """
         try:
-            # Go up from the Like button to find the post container
             parent = like_button
-            for _ in range(20):  # Go up max 20 levels to find post container
+            
+            # Walk up the DOM tree to find the post container
+            for level in range(10):
                 parent = parent.find_element(By.XPATH, '..')
                 
-                # Look for the + icon (Follow button) within this container
-                # The + icon is usually an SVG with specific classes or near the avatar
+                # Skip if we're in "Suggested for you" section
                 try:
-                    # Method 1: Find SVG with "Add" or follow-related aria-label
-                    follow_svgs = parent.find_elements(By.XPATH, './/svg[@aria-label="Follow" or @aria-label="Add"]')
-                    if follow_svgs:
-                        # Get the clickable parent
-                        for svg in follow_svgs:
-                            try:
-                                btn = svg.find_element(By.XPATH, './ancestor::div[@role="button"][1]')
-                                return btn
-                            except:
-                                pass
+                    text_content = parent.text
+                    if 'Suggested for you' in text_content:
+                        continue
                 except:
                     pass
                 
-                # Method 2: Find div[role=button] containing the + icon near avatar
-                try:
-                    # Look for the blue + circle on profile pictures
-                    plus_buttons = parent.find_elements(By.XPATH, 
-                        './/div[@role="button"][contains(@class, "x1pahc9y") or contains(@class, "xeusxvb")]')
-                    for btn in plus_buttons:
-                        # Check if it's small (follow button is small, not the main buttons)
+                # Find small div[role="button"] elements (the + icon is ~16x16)
+                buttons = parent.find_elements(By.XPATH, './/div[@role="button"]')
+                
+                for btn in buttons:
+                    try:
                         size = btn.size
-                        if size.get('width', 100) < 50 and size.get('height', 100) < 50:
-                            return btn
-                except:
-                    pass
-                
-                # Method 3: Find any element with "Follow" text that's clickable
-                try:
-                    follow_links = parent.find_elements(By.XPATH, 
-                        './/a[contains(., "Follow")] | .//div[@role="button"][contains(., "Follow")]')
-                    for link in follow_links:
-                        text = link.text.strip()
-                        # Make sure it says "Follow" not "Following" or "Followers"
-                        if text == "Follow":
-                            return link
-                except:
-                    pass
+                        w, h = size.get('width', 0), size.get('height', 0)
+                        text = btn.text.strip()
+                        
+                        # The + button is small (14-20px) and has NO text (just SVG icon)
+                        if 14 <= w <= 24 and 14 <= h <= 24 and text == '':
+                            # Verify it has an SVG child
+                            svgs = btn.find_elements(By.TAG_NAME, 'svg')
+                            if svgs:
+                                print(f"[DEBUG] Found + button: {w}x{h}px")
+                                return btn
+                    except:
+                        pass
             
             return None
         except Exception as e:
-            print(f"[DEBUG] Error finding follow button: {e}")
+            print(f"[DEBUG] _find_plus_button_for_post error: {e}")
             return None
+
+    def _click_follow_in_popup(self, driver, actions):
+        """
+        After clicking + button, find and click the Follow button in the popup.
+        Returns True if successful.
+        """
+        try:
+            import time
+            time.sleep(1)  # Wait for popup to appear
+            
+            # Find Follow button in popup (div[role="button"] with text "Follow")
+            follow_buttons = driver.find_elements(By.XPATH, '//div[@role="button"]')
+            
+            for btn in follow_buttons:
+                try:
+                    text = btn.text.strip()
+                    if text == 'Follow':
+                        size = btn.size
+                        w = size.get('width', 0)
+                        # The popup Follow button is larger (not the small 16x16 + icon)
+                        if w > 50:
+                            print(f"[DEBUG] Found Follow button in popup: {w}px wide")
+                            btn.click()
+                            time.sleep(0.5)
+                            return True
+                except:
+                    pass
+            
+            print("[DEBUG] No Follow button found in popup")
+            return False
+        except Exception as e:
+            print(f"[DEBUG] _click_follow_in_popup error: {e}")
+            return False
+
+    def _close_popup(self, driver):
+        """Close popup by pressing Escape or clicking outside"""
+        try:
+            from selenium.webdriver.common.keys import Keys
+            body = driver.find_element(By.TAG_NAME, 'body')
+            body.send_keys(Keys.ESCAPE)
+            import time
+            time.sleep(0.5)
+        except:
+            pass
 
     def start(self):
         """Main automation entry point"""
         print(f"\n{'='*80}")
         print(f"[SESSION START] Profile: {self.profile_id}")
         print(f"Session ID: {self.session_id}")
+        print(f"Mode: FOLLOW first, then LIKE")
         print(f"{'='*80}\n")
         
         logger.info(f"Starting session {self.session_id} for profile {self.profile_id}")
-        
-        # Create session in DB
         self.db.create_session(self.session_id, self.profile_id)
 
         try:
@@ -198,16 +215,15 @@ class ThreadsWorker:
             import traceback
             traceback.print_exc()
         finally:
-            # Complete session with stats
             self.db.complete_session(self.session_id, self.stats)
-            
             print(f"\n{'='*80}")
             print(f"[4/4] SESSION COMPLETE")
-            print(f"Stats: Likes={self.stats['likes']}, Follows={self.stats['follows']}, Errors={self.stats['errors']}")
+            print(f"Follows: {self.stats['follows']} | Likes: {self.stats['likes']} | Errors: {self.stats['errors']}")
+            print(f"Users: {', '.join(self.processed_users) if self.processed_users else 'None'}")
             print(f"{'='*80}\n")
 
     def _run_automation_loop(self, driver, actions):
-        """Core automation logic"""
+        """Core automation logic: FOLLOW first, then LIKE"""
         print("[2/4] Navigating to threads.com...")
         driver.get("https://www.threads.com/")
         time.sleep(15)
@@ -217,22 +233,17 @@ class ThreadsWorker:
         self.take_screenshot(driver, '02_page_loaded')
         
         # Page analysis
-        all_buttons = driver.find_elements(By.TAG_NAME, "button")
-        all_divs_btn = driver.find_elements(By.CSS_SELECTOR, "div[role='button']")
         like_svgs = driver.find_elements(By.CSS_SELECTOR, 'svg[aria-label="Like"]')
-        print(f"[DEBUG] Page: {len(all_buttons)} buttons, {len(all_divs_btn)} div[role=button], {len(like_svgs)} Like SVGs")
+        all_divs_btn = driver.find_elements(By.CSS_SELECTOR, "div[role='button']")
+        print(f"[DEBUG] Page: {len(like_svgs)} Like SVGs, {len(all_divs_btn)} div[role=button]")
         
         # Check if login required
         if 'login' in driver.current_url.lower():
             print("[ERROR] Login page detected! Profile not logged in.")
             self.take_screenshot(driver, '03_login_required')
-            self.db.log_action(self.session_id, self.profile_id, "error", 
-                              error="Login required", status='failed')
             return
         
-        # Start automation loop
-        print("\n[3/4] Starting automation loop...")
-        print("[3/4] Mode: FOLLOW first, then LIKE each post")
+        print("\n[3/4] Starting automation loop (FOLLOW → LIKE)...")
         processed_count = 0
         max_actions = 10
         scroll_attempts = 0
@@ -244,9 +255,9 @@ class ThreadsWorker:
             print(f"[3/4] SCROLL {scroll_attempts}/{max_scrolls}")
             print(f"{'─'*60}")
             
-            # Find Like buttons (hearts) - each represents a post
+            # Find Like buttons (each represents a post)
             like_buttons = actions.find_like_buttons(driver)
-            print(f"[3/4] Found {len(like_buttons)} posts (Like buttons)")
+            print(f"[3/4] Found {len(like_buttons)} posts")
             
             if len(like_buttons) == 0:
                 print("[3/4] No posts found, scrolling...")
@@ -256,67 +267,71 @@ class ThreadsWorker:
                 continue
             
             # Process each post: FOLLOW first, then LIKE
-            for i, like_btn in enumerate(like_buttons[:5]):  # Max 5 per scroll
+            for i, like_btn in enumerate(like_buttons[:5]):
                 if processed_count >= max_actions:
                     break
                 
                 try:
-                    # Extract username from this post
-                    username = self._extract_username_from_like(like_btn)
+                    # Extract username
+                    username = self._extract_username_from_post(like_btn)
                     
-                    # Skip if already processed this user
-                    if username in self.liked_users and username != "unknown":
-                        print(f"[3/4] Skipping @{username} (already processed)")
+                    # Skip if already processed
+                    if username in self.processed_users and username != "unknown":
+                        print(f"[3/4] Skipping @{username} (already done)")
                         continue
                     
-                    print(f"\n[3/4] ━━━ POST {i+1} ━━━")
-                    print(f"[3/4] 👤 Target: @{username}")
+                    print(f"\n[3/4] ━━━ POST {i+1}: @{username} ━━━")
                     
-                    # ========== STEP 1: FOLLOW ==========
-                    print(f"[3/4] Step 1: Looking for Follow button...")
-                    follow_btn = self._find_follow_button_for_post(like_btn, driver)
+                    # ========== STEP 1: FOLLOW (+ button -> popup -> Follow) ==========
+                    print(f"[3/4] Step 1: Looking for + button...")
+                    plus_btn = self._find_plus_button_for_post(like_btn, driver)
                     
-                    if follow_btn:
-                        print(f"[3/4] Found Follow button, clicking...")
-                        if actions.safe_click(follow_btn):
-                            self.stats["follows"] += 1
-                            print(f"[3/4] ✅ FOLLOWED @{username}!")
-                            
-                            # Screenshot after follow
-                            screenshot_name = f'follow_{self.stats["follows"]:02d}_{username}'
-                            screenshot_path = self.take_screenshot(driver, screenshot_name)
-                            
-                            # Log to DB
-                            self.db.log_action(
-                                session_id=self.session_id,
-                                profile_id=self.profile_id,
-                                action_type='follow',
-                                target_username=username,
-                                target_url=driver.current_url,
-                                status='success',
-                                screenshot_path=screenshot_path
-                            )
-                            self.db.update_daily_stats(self.profile_id, 'follow')
-                            self._log_to_file('follow', username)
-                            
-                            actions.random_delay(1, 2)
+                    if plus_btn:
+                        print(f"[3/4] Found + button, clicking to open popup...")
+                        if actions.safe_click(plus_btn):
+                            # Wait for popup and click Follow
+                            if self._click_follow_in_popup(driver, actions):
+                                self.stats["follows"] += 1
+                                print(f"[3/4] ✅ FOLLOWED @{username}!")
+                                
+                                # Screenshot (proof of follow)
+                                ss_path = self.take_screenshot(driver, f'follow_{self.stats["follows"]:02d}_{username}')
+                                
+                                # Log to DB
+                                self.db.log_action(
+                                    session_id=self.session_id,
+                                    profile_id=self.profile_id,
+                                    action_type='follow',
+                                    target_username=username,
+                                    target_url=driver.current_url,
+                                    status='success',
+                                    screenshot_path=ss_path
+                                )
+                                self.db.update_daily_stats(self.profile_id, 'follow')
+                                self._log_to_file('follow', username)
+                                
+                                # Close popup
+                                self._close_popup(driver)
+                                actions.random_delay(1, 2)
+                            else:
+                                print(f"[3/4] ⚠️ Could not click Follow in popup")
+                                self._close_popup(driver)
                         else:
-                            print(f"[3/4] ❌ Follow click failed")
+                            print(f"[3/4] ❌ + button click failed")
                     else:
-                        print(f"[3/4] ⚠️ No Follow button found (maybe already following)")
+                        print(f"[3/4] ⚠️ No + button found (maybe already following)")
                     
                     # ========== STEP 2: LIKE ==========
                     print(f"[3/4] Step 2: Clicking Like button...")
                     if actions.safe_click(like_btn):
                         self.stats["likes"] += 1
                         processed_count += 1
-                        self.liked_users.add(username)
+                        self.processed_users.add(username)
                         
                         print(f"[3/4] ✅ LIKED @{username}!")
                         
-                        # Screenshot after like
-                        screenshot_name = f'like_{self.stats["likes"]:02d}_{username}'
-                        screenshot_path = self.take_screenshot(driver, screenshot_name)
+                        # Screenshot
+                        ss_path = self.take_screenshot(driver, f'like_{self.stats["likes"]:02d}_{username}')
                         
                         # Log to DB
                         self.db.log_action(
@@ -326,30 +341,23 @@ class ThreadsWorker:
                             target_username=username,
                             target_url=driver.current_url,
                             status='success',
-                            screenshot_path=screenshot_path
+                            screenshot_path=ss_path
                         )
                         self.db.update_daily_stats(self.profile_id, 'like')
                         self._log_to_file('like', username)
                         
-                        print(f"[3/4] ✅ Completed: Follow + Like for @{username}")
+                        print(f"[3/4] ✅ Done: Follow + Like @{username}")
                         actions.random_delay(2, 4)
                     else:
-                        print(f"[3/4] ❌ Like click failed for @{username}")
+                        print(f"[3/4] ❌ Like click failed")
                         
                 except Exception as e:
                     print(f"[ERROR] Action failed: {e}")
                     self.stats["errors"] += 1
-                    self.db.log_action(
-                        session_id=self.session_id,
-                        profile_id=self.profile_id,
-                        action_type='error',
-                        status='failed',
-                        error=str(e)
-                    )
             
             # Scroll for more
             if processed_count < max_actions:
-                print("\n[3/4] Scrolling for more content...")
+                print("\n[3/4] Scrolling for more...")
                 driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
                 time.sleep(3)
         
@@ -357,11 +365,10 @@ class ThreadsWorker:
         print(f"\n{'─'*60}")
         print(f"[3/4] AUTOMATION COMPLETE")
         print(f"{'─'*60}")
-        print(f"Total Follows: {self.stats['follows']}")
-        print(f"Total Likes: {self.stats['likes']}")
-        print(f"Total Errors: {self.stats['errors']}")
-        print(f"Users Processed: {', '.join(self.liked_users) if self.liked_users else 'None'}")
-        
+        print(f"Follows: {self.stats['follows']}")
+        print(f"Likes: {self.stats['likes']}")
+        print(f"Errors: {self.stats['errors']}")
+        print(f"Users: {', '.join(self.processed_users)}")
         self.take_screenshot(driver, 'final_state')
 
     def _check_limits(self):

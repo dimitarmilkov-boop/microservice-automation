@@ -54,41 +54,29 @@ class ThreadsActions:
             return False
 
     def find_follow_buttons(self, driver):
-        """Find Follow buttons - <a> tags with text 'Follow' (as found on live Threads page)"""
+        """
+        Find Follow buttons on the page.
+        Strategy: div[role='button'] with text exactly 'Follow' (not Following/Followers)
+        """
         buttons = []
         
-        # Method 1: Find <a> tags containing "Follow" text (most common on Threads)
+        # Find all div[role="button"] and filter by text content
         try:
-            xpath = "//a[@role='link' and contains(., 'Follow')]"
-            found = driver.find_elements(By.XPATH, xpath)
-            print(f"[DEBUG] XPath <a role=link> with 'Follow': {len(found)}")
-            buttons.extend(found)
+            all_buttons = driver.find_elements(By.XPATH, '//div[@role="button"]')
+            
+            for btn in all_buttons:
+                try:
+                    text = btn.text.strip()
+                    # Must be exactly "Follow" or "Follow back"
+                    if text in ['Follow', 'Follow back']:
+                        buttons.append(btn)
+                except:
+                    pass
+            
+            print(f"[DEBUG] Found {len(buttons)} Follow buttons (text-based)")
         except Exception as e:
-            print(f"[DEBUG] XPath method 1 failed: {e}")
+            print(f"[DEBUG] find_follow_buttons error: {e}")
         
-        # Method 2: Any <a> tag with exact text "Follow" 
-        try:
-            xpath2 = "//a[normalize-space(.)='Follow']"
-            found2 = driver.find_elements(By.XPATH, xpath2)
-            print(f"[DEBUG] XPath <a> text='Follow': {len(found2)}")
-            for el in found2:
-                if el not in buttons:
-                    buttons.append(el)
-        except Exception as e:
-            print(f"[DEBUG] XPath method 2 failed: {e}")
-        
-        # Method 3: div[role=button] with "Follow" (fallback for profile pages)
-        try:
-            xpath3 = "//div[@role='button' and contains(., 'Follow')]"
-            found3 = driver.find_elements(By.XPATH, xpath3)
-            print(f"[DEBUG] XPath div[role=button] with 'Follow': {len(found3)}")
-            for el in found3:
-                if el not in buttons:
-                    buttons.append(el)
-        except Exception as e:
-            print(f"[DEBUG] XPath method 3 failed: {e}")
-        
-        print(f"[DEBUG] Total unique Follow buttons found: {len(buttons)}")
         return buttons
 
     def find_like_buttons(self, driver):
