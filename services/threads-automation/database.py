@@ -284,6 +284,22 @@ class Database:
         current = stats.get(column, 0)
         return current >= limit
 
+    def is_user_followed(self, profile_id: str, username: str) -> bool:
+        """Check if a specific user has already been followed by this profile"""
+        if not username:
+            return False
+            
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT 1 FROM engagement_log 
+                WHERE profile_id = ? AND target_username = ? AND action_type = 'follow' AND status = 'success'
+                LIMIT 1
+                """,
+                (profile_id, username)
+            )
+            return cursor.fetchone() is not None
+
     # ========================================
     # STATISTICS & REPORTING
     # ========================================

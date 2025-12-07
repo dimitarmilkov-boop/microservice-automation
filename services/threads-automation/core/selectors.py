@@ -30,6 +30,13 @@ SELECTORS = {
         "Subscribe"
     ],
     
+    # Selectors for Opening the Followers List on Profile Page
+    "followers_count_button": [
+        "a[href*='followers']",
+        "a[href*='/followers/']",
+        "span", # Often wrapped in span if just text
+    ],
+
     # Containers
     "scrollable_container": [
         '[style*="overflow"]',
