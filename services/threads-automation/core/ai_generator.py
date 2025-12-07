@@ -1,92 +1,92 @@
 """
 AI Comment Generator
-Ported from 'threads AI comm (1)/ai-generator.js'
-Supports OpenAI and Groq (fastest).
+Refactored to match 'threads AI comm (1)/ai-generator.js' logic.
+Supports OpenAI and Groq.
 """
 import os
+import re
 import requests
 import logging
+import random
 
 logger = logging.getLogger(__name__)
 
+class AIProvider:
+    def generate(self, prompt: str, model: str) -> str:
+        raise NotImplementedError
+
+class OpenAIProvider(AIProvider):
+    def __init__(self, key):
+        self.key = key
+        self.url = "https://api.openai.com/v1/chat/completions"
+
+    def generate(self, prompt: str, model: str) -> str:
+        headers = {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
+        data = {
+            "model": model or "gpt-4-turbo",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 100,
+            "temperature": 0.7
+        }
+        resp = requests.post(self.url, headers=headers, json=data)
+        resp.raise_for_status()
+        return resp.json()['choices'][0]['message']['content']
+
+class GroqProvider(AIProvider):
+    def __init__(self, key):
+        self.key = key
+        self.url = "https://api.groq.com/openai/v1/chat/completions"
+
+    def generate(self, prompt: str, model: str) -> str:
+        headers = {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"}
+        data = {
+            "model": model or "llama-3.1-8b-instant",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 100,
+            "temperature": 0.7
+        }
+        resp = requests.post(self.url, headers=headers, json=data)
+        resp.raise_for_status()
+        return resp.json()['choices'][0]['message']['content']
+
 class AICommentGenerator:
-    def __init__(self, openai_key=None, groq_key=None):
-        self.openai_key = openai_key or os.getenv("OPENAI_API_KEY")
-        self.groq_key = groq_key or os.getenv("GROQ_API_KEY")
+    def __init__(self):
+        self.providers = {}
+        if os.getenv("OPENAI_API_KEY"):
+            self.providers["openai"] = OpenAIProvider(os.getenv("OPENAI_API_KEY"))
+        if os.getenv("GROQ_API_KEY"):
+            self.providers["groq"] = GroqProvider(os.getenv("GROQ_API_KEY"))
         
-    def generate_comment(self, post_text: str, provider="groq", model="llama-3.1-8b-instant", prompt_template=None) -> str:
-        """
-        Generate a relevant comment for a Threads post.
-        """
+        self.manual_comments = [
+            "Great post!", "Interesting perspective!", "Thanks for sharing.",
+            "Love this!", "So true.", "Totally agree."
+        ]
+
+    def clean_comment(self, text: str) -> str:
+        # Remove quotes
+        text = text.strip().strip('"').strip("'")
+        # Remove prefixes like "Comment:"
+        text = re.sub(r'^(Comment:|Reply:|Answer:)\s*', '', text, flags=re.IGNORECASE)
+        return text.strip()
+
+    def generate_comment(self, post_text: str, provider_name: str = "openai", model: str = None, prompt_template: str = None) -> str:
         if not post_text:
             return ""
-
-        # Default Prompt if none provided
-        if not prompt_template:
-            prompt_template = "Write a short, friendly, and engaging comment for this Threads post: '{POST_TEXT}'. Keep it under 20 words. No hashtags."
             
+        # Fallback to manual if no provider configured or key missing
+        if provider_name not in self.providers:
+            logger.warning(f"Provider {provider_name} not available (key missing?). Using fallback.")
+            return random.choice(self.manual_comments)
+
+        # Prepare prompt
+        if not prompt_template:
+            prompt_template = "Write a short, casual comment for: {POST_TEXT}"
+        
         final_prompt = prompt_template.replace("{POST_TEXT}", post_text)
         
         try:
-            if provider == "groq":
-                return self._generate_groq(final_prompt, model)
-            elif provider == "openai":
-                return self._generate_openai(final_prompt, model)
-            else:
-                logger.error(f"Unknown AI provider: {provider}")
-                return ""
+            raw_comment = self.providers[provider_name].generate(final_prompt, model)
+            return self.clean_comment(raw_comment)
         except Exception as e:
             logger.error(f"AI Generation failed: {e}")
-            return ""
-
-    def _generate_groq(self, prompt: str, model: str) -> str:
-        if not self.groq_key:
-            raise ValueError("Groq API Key missing")
-            
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.groq_key}",
-            "Content-Type": "application/json"
-        }
-        data = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7,
-            "max_tokens": 60
-        }
-        
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        
-        result = response.json()
-        return result['choices'][0]['message']['content'].strip().strip('"')
-
-    def _generate_openai(self, prompt: str, model: str) -> str:
-        if not self.openai_key:
-            raise ValueError("OpenAI API Key missing")
-            
-        url = "https://api.openai.com/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.openai_key}",
-            "Content-Type": "application/json"
-        }
-        data = {
-            "model": model, # e.g. gpt-3.5-turbo
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7,
-            "max_tokens": 60
-        }
-        
-        response = requests.post(url, headers=headers, json=data)
-        response.raise_for_status()
-        
-        result = response.json()
-        return result['choices'][0]['message']['content'].strip().strip('"')
-
-
-
-
-
-
-
-
+            return random.choice(self.manual_comments)
