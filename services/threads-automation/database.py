@@ -300,6 +300,22 @@ class Database:
             )
             return cursor.fetchone() is not None
 
+    def is_url_commented(self, profile_id: str, target_url: str) -> bool:
+        """Check if a specific URL has already been commented on by this profile"""
+        if not target_url:
+            return False
+            
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                """
+                SELECT 1 FROM engagement_log 
+                WHERE profile_id = ? AND target_url = ? AND action_type = 'comment' AND status = 'success'
+                LIMIT 1
+                """,
+                (profile_id, target_url)
+            )
+            return cursor.fetchone() is not None
+
     # ========================================
     # STATISTICS & REPORTING
     # ========================================

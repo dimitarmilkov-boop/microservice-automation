@@ -15,7 +15,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
-from selenium.common.action_chains import ActionChains
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 
 from shared.browser_automation.gologin_manager import GoLoginManager, GoLoginSession
@@ -94,7 +94,7 @@ class ThreadsCommentWorker:
         
         print(f"[2/4] Navigating to {url}...")
         driver.get(url)
-        time.sleep(10) # Wait for initial load
+        time.sleep(5) # Wait for initial load
         self.take_screenshot(driver, 'feed_loaded')
         
         # Create session in DB
@@ -107,7 +107,33 @@ class ThreadsCommentWorker:
         
         while self.stats['comments'] < self.settings['max_comments_per_session'] and scrolls < self.settings['max_scrolls']:
             # Find all posts currently visible
-            posts = driver.find_elements(By.CSS_SELECTOR, '[role="article"]')
+            # Primary: 'data-pressable-container="true"' (Verified via debug script as the post container)
+            posts = driver.find_elements(By.CSS_SELECTOR, '[data-pressable-container="true"]')
+            
+            # Fallback to 'role="article"' if primary fails
+            if not posts:
+                posts = driver.find_elements(By.CSS_SELECTOR, '[role="article"]')
+
+            # Last resort: Reply buttons
+            if not posts:
+                # Try finding by Reply button presence (heuristic)
+                # This finds the container of the reply button, then goes up to the post
+                try:
+                    reply_buttons = driver.find_elements(By.CSS_SELECTOR, 'svg[aria-label="Reply"]')
+                    if reply_buttons:
+                        print(f"[DEBUG] Found {len(reply_buttons)} reply buttons. deducing posts...")
+                        posts = []
+                        for btn in reply_buttons:
+                            try:
+                                # Go up 5 levels to find the article container
+                                # This is an approximation, but usually works
+                                post_container = btn.find_element(By.XPATH, "./../../../../..")
+                                posts.append(post_container)
+                            except:
+                                pass
+                except:
+                    pass
+            
             print(f"[LOOP] Found {len(posts)} posts in view.")
             
             for post in posts:
@@ -151,9 +177,9 @@ class ThreadsCommentWorker:
 
     def _should_process_post(self, post, url):
         # 1. Check DB if already processed (commented)
-        # We need a method to check if we commented on this URL
-        # For now, simplistic check:
-        # TODO: Add is_url_commented to DB
+        if self.db.is_url_commented(self.profile_id, url):
+            print(f"[SKIP] Already commented on: {url}")
+            return False
         
         # 2. Filter content
         try:
@@ -226,15 +252,31 @@ class ThreadsCommentWorker:
             time.sleep(2)
             
             # Find input
-            # Try finding textarea or contenteditable
-            # Logic from extension: 'div[contenteditable="true"][aria-label*="Reply"]'
+            # PRIORITY: Look inside a Modal Dialog first
+            modal = None
             try:
-                input_el = WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.XPATH, '//div[@contenteditable="true" and @aria-label="Reply to thread"]'))
-                )
+                modal = driver.find_element(By.CSS_SELECTOR, '[role="dialog"]')
+                print("[DEBUG] Modal dialog detected. Scoping search to modal.")
             except:
-                # Fallback
-                input_el = driver.find_element(By.XPATH, '//div[@contenteditable="true"]')
+                pass
+
+            try:
+                if modal:
+                    # Search INSIDE the modal
+                    input_el = modal.find_element(By.XPATH, './/div[@contenteditable="true"]')
+                else:
+                    # Inline reply: Search globally but wait for visibility
+                    # Use the specific aria-label to be sure
+                    input_el = WebDriverWait(driver, 5).until(
+                        EC.visibility_of_element_located((By.XPATH, '//div[@contenteditable="true" and @aria-label="Reply to thread"]'))
+                    )
+            except:
+                # Fallback: Find ALL inputs and take the last one (usually the new one or the one under the current post)
+                inputs = driver.find_elements(By.XPATH, '//div[@contenteditable="true"]')
+                if inputs:
+                    input_el = inputs[-1] # Pick the last one
+                else:
+                    raise Exception("No input field found")
                 
             print("[DEBUG] Input found.")
             
@@ -254,7 +296,14 @@ class ThreadsCommentWorker:
             
             # 6. Click Post
             time.sleep(1)
-            post_btn = driver.find_element(By.XPATH, "//div[text()='Post' and @role='button']")
+            
+            if modal:
+                post_btn = modal.find_element(By.XPATH, ".//div[text()='Post' and @role='button']")
+            else:
+                # Find all 'Post' buttons and click the last visible one
+                post_btns = driver.find_elements(By.XPATH, "//div[text()='Post' and @role='button']")
+                post_btn = post_btns[-1] if post_btns else None
+
             if post_btn:
                 print("[ACTION] Clicking Post...")
                 post_btn.click()
