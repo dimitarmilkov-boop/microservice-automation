@@ -52,6 +52,7 @@ class ThreadsWorker:
         
         # Track processed users to avoid duplicates
         self.processed_users = set()
+        self.followed_users = []  # Track who we followed
 
     def take_screenshot(self, driver, name):
         """Save screenshot for debugging and proof"""
@@ -173,13 +174,26 @@ class ThreadsWorker:
     def _close_popup(self, driver):
         """Close popup by pressing Escape or clicking outside"""
         try:
+            # Method 1: Press Escape (safest - no scrolling)
             from selenium.webdriver.common.keys import Keys
-            body = driver.find_element(By.TAG_NAME, 'body')
-            body.send_keys(Keys.ESCAPE)
-            import time
-            time.sleep(0.5)
-        except:
-            pass
+            from selenium.webdriver.common.action_chains import ActionChains
+            
+            actions = ActionChains(driver)
+            actions.send_keys(Keys.ESCAPE).perform()
+            time.sleep(0.3)
+            print("[DEBUG] Closed popup with Escape")
+        except Exception as e:
+            print(f"[DEBUG] Escape failed: {e}")
+            try:
+                # Method 2: Click on dark overlay area (top of page, safe zone)
+                driver.execute_script("""
+                    var overlay = document.elementFromPoint(window.innerWidth - 50, 50);
+                    if (overlay) overlay.click();
+                """)
+                time.sleep(0.3)
+                print("[DEBUG] Closed popup with JS click")
+            except Exception as e2:
+                print(f"[DEBUG] JS click failed: {e2}")
 
     def start(self):
         """Main automation entry point"""
@@ -219,7 +233,8 @@ class ThreadsWorker:
             print(f"\n{'='*80}")
             print(f"[4/4] SESSION COMPLETE")
             print(f"Follows: {self.stats['follows']} | Likes: {self.stats['likes']} | Errors: {self.stats['errors']}")
-            print(f"Users: {', '.join(self.processed_users) if self.processed_users else 'None'}")
+            print(f"Followed: {', '.join(self.followed_users) if self.followed_users else 'None'}")
+            print(f"Liked: {', '.join(self.processed_users) if self.processed_users else 'None'}")
             print(f"{'='*80}\n")
 
     def _run_automation_loop(self, driver, actions):
@@ -292,6 +307,7 @@ class ThreadsWorker:
                             # Wait for popup and click Follow
                             if self._click_follow_in_popup(driver, actions):
                                 self.stats["follows"] += 1
+                                self.followed_users.append(username)
                                 print(f"[3/4] ✅ FOLLOWED @{username}!")
                                 
                                 # Screenshot (proof of follow)
