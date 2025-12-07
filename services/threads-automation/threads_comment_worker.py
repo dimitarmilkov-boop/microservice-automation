@@ -203,12 +203,42 @@ class ThreadsCommentWorker:
         print(f"[ACTION] Processing post: {url}")
         
         try:
-            # 1. Extract Text
-            post_text = post.text
-            # Basic cleanup to remove user handle, timestamps from start
-            # Heuristic: split by newlines, join meaningful parts
-            lines = [l for l in post_text.split('\n') if len(l) > 2]
-            clean_text = " ".join(lines[:3]) # First 3 lines usually contain the meat
+            # 1. Extract Text (Refined based on JS debug script)
+            try:
+                text_elements = post.find_elements(By.CSS_SELECTOR, '[dir="auto"]')
+                candidates = []
+                for el in text_elements:
+                    text = el.text.strip()
+                    # Filter noise
+                    if len(text) < 2: continue
+                    if text in ["Like", "Reply", "Share", "Translate"]: continue
+                    if "Translate" in text and len(text) < 20: continue # "See Translation" etc
+                    
+                    # Remove "Translate" suffix if present
+                    if text.endswith("Translate"):
+                        text = text[:-9].strip()
+                        
+                    candidates.append(text)
+                
+                if candidates:
+                    # Pick longest candidate
+                    clean_text = max(candidates, key=len)
+                else:
+                    clean_text = ""
+            except:
+                clean_text = ""
+
+            # Final filtering of the chosen text
+            if not clean_text or len(clean_text) < 5:
+                print(f"[SKIP] Text too short: '{clean_text}'")
+                return False
+                
+            # Skip if text looks like a URL or file (common in spam posts in your logs)
+            if "http" in clean_text or ".com" in clean_text or "pin.it" in clean_text:
+                print(f"[SKIP] Post looks like a link farm: '{clean_text}'")
+                return False
+
+            print(f"[DEBUG] Final Extracted Text: '{clean_text}'")
             
             # 1.5 Like Post (if enabled)
             if self.settings.get('enable_like', True):

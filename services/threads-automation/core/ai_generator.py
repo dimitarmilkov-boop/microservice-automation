@@ -67,6 +67,10 @@ class AICommentGenerator:
         text = text.strip().strip('"').strip("'")
         # Remove prefixes like "Comment:"
         text = re.sub(r'^(Comment:|Reply:|Answer:)\s*', '', text, flags=re.IGNORECASE)
+        # Remove emojis (causes ChromeDriver BMP error)
+        text = re.sub(r'[\U00010000-\U0010ffff]', '', text)
+        # Remove any remaining special unicode
+        text = text.encode('ascii', 'ignore').decode('ascii')
         return text.strip()
 
     def generate_comment(self, post_text: str, provider_name: str = "openai", model: str = None, prompt_template: str = None) -> str:
@@ -83,6 +87,11 @@ class AICommentGenerator:
             prompt_template = "Write a short, casual comment for: {POST_TEXT}"
         
         final_prompt = prompt_template.replace("{POST_TEXT}", post_text)
+        
+        # Debug: Show what we're sending to AI
+        print(f"[AI DEBUG] Post text: '{post_text[:80]}...'")
+        print(f"[AI DEBUG] Final prompt sent to {provider_name}:")
+        print(f"---\n{final_prompt}\n---")
         
         try:
             raw_comment = self.providers[provider_name].generate(final_prompt, model)
