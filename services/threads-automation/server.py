@@ -10,9 +10,14 @@ import json
 import ast
 import time
 import random
+import sys
+import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from pydantic import BaseModel
+
+# Add project root to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from shared.browser_automation.browser_profiles import BrowserProfileManager
 from threads_growth_worker import ThreadsGrowthWorker
