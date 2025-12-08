@@ -15,9 +15,19 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 # Add project root to path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
+sys.path.append(PROJECT_ROOT)
+
+# Load .env from project root
+env_path = os.path.join(PROJECT_ROOT, '.env')
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+    print(f"Loaded .env from {env_path}")
+else:
+    print(f"Warning: .env not found at {env_path}")
 
 from shared.browser_automation.browser_profiles import BrowserProfileManager
 from threads_growth_worker import ThreadsGrowthWorker
