@@ -56,6 +56,15 @@ db = Database(Config.DB_PATH)
 # Profile Manager
 profile_manager = BrowserProfileManager()
 
+# Build profile ID -> Name cache ONCE at startup (not on every request)
+PROFILE_ID_TO_NAME = {}
+print("Building profile cache...")
+for name in profile_manager.list_profile_names():
+    pid = profile_manager.get_profile_id_by_name(name)
+    if pid:
+        PROFILE_ID_TO_NAME[pid] = name
+print(f"Cached {len(PROFILE_ID_TO_NAME)} profiles.")
+
 # Global State
 active_workers = {}
 worker_locks = {} # profile_id -> Lock
@@ -276,19 +285,12 @@ async def get_logs():
     logs = cursor.fetchall()
     conn.close()
     
-    # Build a cache of profile_id -> name
-    profile_id_to_name = {}
-    for name in profile_manager.list_profile_names():
-        pid = profile_manager.get_profile_id_by_name(name)
-        if pid:
-            profile_id_to_name[pid] = name
-    
-    # Format for JSON
+    # Format for JSON (use cached profile mapping)
     log_data = []
     for log in logs:
         profile_id = log[1]
-        # Look up profile name, fallback to shortened ID
-        profile_name = profile_id_to_name.get(profile_id, profile_id[:8] + "...")
+        # Look up profile name from startup cache, fallback to shortened ID
+        profile_name = PROFILE_ID_TO_NAME.get(profile_id, profile_id[:8] + "...")
         
         log_data.append({
             "time": log[5],

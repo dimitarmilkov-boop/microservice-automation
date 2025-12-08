@@ -30,13 +30,12 @@ if env_path.exists():
                 os.environ[key.strip()] = value.strip()
 
 from threads_growth_worker import ThreadsGrowthWorker
-from growth_config import TARGETS
 from shared.browser_automation.browser_profiles import BrowserProfileManager
 
 def main():
     parser = argparse.ArgumentParser(description='Run Threads Growth Worker (Targeted Follow)')
     parser.add_argument('--profile', type=str, help='GoLogin Profile Name (e.g. Debradavis7611) OR ID')
-    parser.add_argument('--target', type=str, help='Target username (optional, defaults to config)')
+    parser.add_argument('--target', type=str, required=True, help='Target username to steal followers from (e.g. zuck)')
     
     args = parser.parse_args()
     
@@ -69,8 +68,7 @@ def main():
         print(f"Error: Could not find profile ID for '{profile_input}'")
         return
 
-    # Use provided target or pick from config
-    target = args.target or TARGETS[0]
+    target = args.target.strip().lstrip('@')
     
     print(f"Starting Growth Worker for profile {profile_input} ({profile_id}) on target @{target}")
     
