@@ -8,57 +8,111 @@
     <style>
         body { background-color: #f8f9fa; }
         .card { box-shadow: 0 4px 6px rgba(0,0,0,0.1); border: none; margin-bottom: 20px; }
-        .log-box { height: 300px; overflow-y: auto; background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 10px; font-size: 0.9rem; }
+        .log-box { height: 400px; overflow-y: auto; background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 10px; font-size: 0.85rem; }
+        .config-editor { font-family: monospace; font-size: 0.85rem; min-height: 300px; background: #f8f9fa; }
+        .profile-select { height: 300px; }
     </style>
 </head>
 <body>
-    <div class="container py-5">
-        <h1 class="mb-4 text-center">🤖 Threads Automation Control</h1>
-        
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">🤖 Threads Automation Control</span>
+            <span class="badge bg-success" id="connectionStatus">Connected</span>
+        </div>
+    </nav>
+
+    <div class="container-fluid px-4">
         <div class="row">
             <!-- Left Column: Controls -->
             <div class="col-md-4">
-                <div class="card p-4">
-                    <h4 class="card-title mb-3">🚀 Launch Session</h4>
-                    <form id="startForm">
-                        <div class="mb-3">
-                            <label class="form-label">GoLogin Profile ID</label>
-                            <input type="text" class="form-control" name="profile_id" placeholder="e.g. 65a..." required>
-                            <div class="form-text">Copy from GoLogin app</div>
-                        </div>
-                        
-                        <div class="mb-3">
-                            <label class="form-label">Action Mode</label>
-                            <select class="form-select" name="action_type">
-                                <option value="all">Full Automation (Follow + Like + Comment)</option>
-                                <option value="follow">Follow Only</option>
-                                <option value="comment">Comment Only</option>
+                
+                <!-- Profile Selection -->
+                <div class="card p-3">
+                    <h5 class="card-title">1. Select Profile</h5>
+                    <select class="form-select mb-3" id="profileSelect">
+                        <option value="" selected disabled>Choose GoLogin Profile...</option>
+                        {% for profile in profiles %}
+                        <option value="{{ profile.id }}">{{ profile.name }} ({{ profile.id[:6] }}...)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Dark Panel (Growth) -->
+                <div class="card p-3 border-start border-4 border-primary">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title m-0">🌑 Dark Panel (Growth)</h5>
+                    </div>
+                    <p class="small text-muted">Targeted follow from `growth_config.py`</p>
+                    <div class="d-grid">
+                        <button class="btn btn-primary" onclick="runWorker('growth')">Run Growth Once Now</button>
+                    </div>
+                </div>
+
+                <!-- White Panel (Comment) -->
+                <div class="card p-3 border-start border-4 border-info">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title m-0">⚪ White Panel (AI Comment)</h5>
+                    </div>
+                    <p class="small text-muted">Feed interaction from `comment_config.py`</p>
+                    <div class="d-grid">
+                        <button class="btn btn-info text-white" onclick="runWorker('comment')">Run Commenter Once Now</button>
+                    </div>
+                </div>
+
+                <!-- Scheduler -->
+                <div class="card p-3 border-start border-4 border-warning">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title m-0">📅 Scheduler</h5>
+                    </div>
+                    <form id="schedulerForm">
+                        <div class="mb-2">
+                            <label class="form-label small">Task Type</label>
+                            <select class="form-select form-select-sm" id="schedTaskType">
+                                <option value="growth">Growth (Follow)</option>
+                                <option value="comment">Comment (AI)</option>
                             </select>
                         </div>
-
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <label class="form-label small">Count/Day</label>
+                                <input type="number" class="form-control form-control-sm" id="schedCount" value="3" min="1">
+                            </div>
+                            <div class="col-3">
+                                <label class="form-label small">Start Hr</label>
+                                <input type="number" class="form-control form-control-sm" id="schedStart" value="9" min="0" max="23">
+                            </div>
+                            <div class="col-3">
+                                <label class="form-label small">End Hr</label>
+                                <input type="number" class="form-control form-control-sm" id="schedEnd" value="22" min="0" max="23">
+                            </div>
+                        </div>
                         <div class="d-grid">
-                            <button type="submit" class="btn btn-primary btn-lg">Start Automation</button>
+                            <button type="button" class="btn btn-warning" onclick="scheduleTasks()">Plan Sessions</button>
                         </div>
                     </form>
                 </div>
 
-                <div class="card p-4">
-                    <h4 class="card-title mb-3">⚙️ Settings</h4>
-                    <form>
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" checked>
-                            <label class="form-check-label">Enable AI Comments</label>
+                <!-- Config Editors -->
+                <div class="card p-3">
+                    <h5 class="card-title">⚙️ Configuration</h5>
+                    <ul class="nav nav-tabs" id="configTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#growth-conf" type="button">Growth</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#comment-conf" type="button">Comment</button>
+                        </li>
+                    </ul>
+                    <div class="tab-content pt-2" id="configTabContent">
+                        <div class="tab-pane fade show active" id="growth-conf" role="tabpanel">
+                            <textarea class="form-control config-editor" id="growthConfigText">{{ growth_config }}</textarea>
+                            <button class="btn btn-sm btn-outline-primary mt-2 w-100" onclick="saveConfig('growth_config.py', 'growthConfigText')">Save Growth Config</button>
                         </div>
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" checked>
-                            <label class="form-check-label">Skip No-Avatar Users</label>
+                        <div class="tab-pane fade" id="comment-conf" role="tabpanel">
+                            <textarea class="form-control config-editor" id="commentConfigText">{{ comment_config }}</textarea>
+                            <button class="btn btn-sm btn-outline-primary mt-2 w-100" onclick="saveConfig('comment_config.py', 'commentConfigText')">Save Comment Config</button>
                         </div>
-                        <div class="mb-2">
-                            <label class="form-label">Daily Limit (Actions)</label>
-                            <input type="number" class="form-control" value="50">
-                        </div>
-                        <button class="btn btn-outline-secondary btn-sm w-100">Save Settings</button>
-                    </form>
+                    </div>
                 </div>
             </div>
 
@@ -68,10 +122,9 @@
                 <div class="card">
                     <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                         <span>📜 Live Action Log</span>
-                        <span class="badge bg-success" id="connectionStatus">Connected</span>
+                        <small>Auto-refreshing...</small>
                     </div>
                     <div class="log-box" id="logBox">
-                        <!-- Logs will appear here -->
                         <div>Waiting for actions...</div>
                     </div>
                 </div>
@@ -79,47 +132,60 @@
                 <!-- Recent Sessions -->
                 <div class="card">
                     <div class="card-header">🕒 Recent Sessions</div>
-                    <table class="table table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>Profile</th>
-                                <th>Status</th>
-                                <th>Start Time</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for session in sessions %}
-                            <tr>
-                                <td>{{ session[1][:8] }}...</td>
-                                <td>
-                                    {% if session[5] == 'running' %}
-                                        <span class="badge bg-primary">Running</span>
-                                    {% elif session[5] == 'completed' %}
-                                        <span class="badge bg-success">Completed</span>
-                                    {% else %}
-                                        <span class="badge bg-danger">Failed</span>
-                                    {% endif %}
-                                </td>
-                                <td>{{ session[3] }}</td>
-                                <td>{{ session[6] }}</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Profile ID</th>
+                                    <th>Type</th>
+                                    <th>Status</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for session in sessions %}
+                                <tr>
+                                    <td>{{ session[3] }}</td>
+                                    <td><small>{{ session[1][:8] }}...</small></td>
+                                    <td>{{ session[2] }}</td>
+                                    <td>
+                                        {% if session[5] == 'running' %}
+                                            <span class="badge bg-primary">Running</span>
+                                        {% elif session[5] == 'completed' %}
+                                            <span class="badge bg-success">Completed</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Failed</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><small>{{ session[6] }}</small></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Form Handling
-        document.getElementById('startForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            
+        // API Actions
+        async function runWorker(type) {
+            const profileId = document.getElementById('profileSelect').value;
+            if (!profileId) {
+                alert('Please select a profile first!');
+                return;
+            }
+
+            if (!confirm(`Start ${type.toUpperCase()} worker for ${profileId}?`)) return;
+
+            const formData = new FormData();
+            formData.append('profile_id', profileId);
+
             try {
-                const response = await fetch('/start', {
+                const response = await fetch(`/api/run_${type}`, {
                     method: 'POST',
                     body: formData
                 });
@@ -127,9 +193,60 @@
                 alert(result.message);
                 if(result.status === 'success') location.reload();
             } catch (err) {
-                alert('Error starting session');
+                alert('Error starting worker: ' + err);
             }
-        });
+        }
+
+        async function saveConfig(filename, elementId) {
+            const content = document.getElementById(elementId).value;
+            const formData = new FormData();
+            formData.append('filename', filename);
+            formData.append('content', content);
+
+            try {
+                const response = await fetch('/api/save_config', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await response.json();
+                alert(result.message);
+            } catch (err) {
+                alert('Error saving config: ' + err);
+            }
+        }
+
+        async function scheduleTasks() {
+            const profileId = document.getElementById('profileSelect').value;
+            if (!profileId) {
+                alert('Please select a profile first!');
+                return;
+            }
+
+            const taskType = document.getElementById('schedTaskType').value;
+            const count = parseInt(document.getElementById('schedCount').value);
+            const startHour = parseInt(document.getElementById('schedStart').value);
+            const endHour = parseInt(document.getElementById('schedEnd').value);
+
+            const payload = {
+                profile_ids: [profileId],
+                task_type: taskType,
+                count: count,
+                start_hour: startHour,
+                end_hour: endHour
+            };
+
+            try {
+                const response = await fetch('/api/schedule', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                alert(result.message);
+            } catch (err) {
+                alert('Error scheduling: ' + err);
+            }
+        }
 
         // Poll for Logs
         async function fetchLogs() {
@@ -137,22 +254,19 @@
                 const res = await fetch('/api/logs');
                 const logs = await res.json();
                 const logBox = document.getElementById('logBox');
-                logBox.innerHTML = logs.map(l => 
-                    `<div><span class="text-secondary">[${l.time}]</span> <b>${l.profile.substring(0,6)}</b>: ${l.action} <span class="${l.status === 'success' ? 'text-success' : 'text-danger'}">(${l.status})</span></div>`
-                ).join('');
+                
+                if (logs.length === 0) return;
+
+                logBox.innerHTML = logs.map(l => {
+                    const time = new Date(l.time).toLocaleTimeString();
+                    const colorClass = l.status === 'success' ? 'text-success' : (l.status === 'error' ? 'text-danger' : 'text-warning');
+                    return `<div><span class="text-secondary">[${time}]</span> <b>${l.profile.substring(0,6)}</b>: ${l.action} <span class="${colorClass}">(${l.status})</span> ${l.metadata ? '<span class="text-muted">'+l.metadata+'</span>' : ''}</div>`
+                }).join('');
             } catch(e) {
                 console.error(e);
             }
         }
-        setInterval(fetchLogs, 2000);
+        setInterval(fetchLogs, 3000);
     </script>
 </body>
 </html>
-
-
-
-
-
-
-
-

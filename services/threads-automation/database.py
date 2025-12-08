@@ -110,12 +110,56 @@ class Database:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_log_session ON engagement_log(session_id)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_log_username ON engagement_log(target_username)")
 
+                # =====================================================
+                # 4. SCHEDULED TASKS TABLE - Tracks planned runs
+                # =====================================================
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        profile_id TEXT NOT NULL,
+                        task_type TEXT NOT NULL,
+                        scheduled_time TIMESTAMP NOT NULL,
+                        status TEXT DEFAULT 'pending',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_schedule_time ON scheduled_tasks(scheduled_time)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_schedule_status ON scheduled_tasks(status)")
+
                 conn.commit()
                 logger.info(f"Database initialized at {self.db_path}")
 
         except Exception as e:
             logger.error(f"Database initialization failed: {e}")
             raise
+
+    # ========================================
+    # SCHEDULING OPERATIONS
+    # ========================================
+
+    def add_scheduled_task(self, profile_id: str, task_type: str, scheduled_time: datetime):
+        with self._get_connection() as conn:
+            conn.execute(
+                "INSERT INTO scheduled_tasks (profile_id, task_type, scheduled_time) VALUES (?, ?, ?)",
+                (profile_id, task_type, scheduled_time.isoformat())
+            )
+            conn.commit()
+
+    def get_pending_tasks(self) -> List[Dict]:
+        """Get tasks that are ready to run (scheduled_time <= now)"""
+        now = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT * FROM scheduled_tasks WHERE status = 'pending' AND scheduled_time <= ? ORDER BY scheduled_time ASC",
+                (now,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def update_task_status(self, task_id: int, status: str):
+        with self._get_connection() as conn:
+            conn.execute("UPDATE scheduled_tasks SET status = ? WHERE id = ?", (status, task_id))
+            conn.commit()
+
 
     # ========================================
     # SESSION OPERATIONS
