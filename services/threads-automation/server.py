@@ -177,7 +177,8 @@ async def read_root(request: Request):
     conn.close()
     
     # Fetch Profiles
-    profiles = profile_manager.list_profiles()
+    profile_names = profile_manager.list_profile_names()
+    profiles = [{"id": profile_manager.get_profile_id_by_name(name), "name": name} for name in profile_names]
     
     # Read Configs for display (Raw text for editing)
     growth_config_text = read_config_raw('growth_config.py')
