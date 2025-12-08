@@ -15,16 +15,20 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from pydantic import BaseModel
-from dotenv import load_dotenv
 
 # Add project root to path
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
 sys.path.append(PROJECT_ROOT)
 
-# Load .env from project root
+# Load .env from project root (with BOM handling for Windows)
 env_path = os.path.join(PROJECT_ROOT, '.env')
 if os.path.exists(env_path):
-    load_dotenv(env_path)
+    with open(env_path, 'r', encoding='utf-8-sig') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ[key.strip()] = value.strip()
     print(f"Loaded .env from {env_path}")
 else:
     print(f"Warning: .env not found at {env_path}")
