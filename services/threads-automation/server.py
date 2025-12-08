@@ -195,14 +195,21 @@ async def read_root(request: Request):
 @app.post("/api/run_growth")
 async def run_growth(
     background_tasks: BackgroundTasks,
-    profile_id: str = Form(...)
+    profile_id: str = Form(...),
+    target: str = Form(...)
 ):
     if profile_id in active_workers and active_workers[profile_id].is_alive():
         return JSONResponse({"status": "error", "message": "Worker already running for this profile"})
 
-    def worker_wrapper(pid):
+    # Clean target (remove @ if present)
+    target = target.strip().lstrip('@')
+    
+    if not target:
+        return JSONResponse({"status": "error", "message": "Target username is required"}, status_code=400)
+
+    def worker_wrapper(pid, tgt):
         try:
-            worker = ThreadsGrowthWorker(pid)
+            worker = ThreadsGrowthWorker(pid, target_username=tgt)
             worker.start()
         except Exception as e:
             logger.error(f"Growth worker failed: {e}")
@@ -210,11 +217,11 @@ async def run_growth(
             if pid in active_workers:
                 del active_workers[pid]
 
-    t = threading.Thread(target=worker_wrapper, args=(profile_id,))
+    t = threading.Thread(target=worker_wrapper, args=(profile_id, target))
     active_workers[profile_id] = t
     t.start()
     
-    return {"status": "success", "message": f"Started Growth Worker for {profile_id}"}
+    return {"status": "success", "message": f"Started Growth Worker for {profile_id} targeting @{target}"}
 
 @app.post("/api/run_comment")
 async def run_comment(

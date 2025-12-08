@@ -25,14 +25,16 @@ from config import Config
 from database import Database
 from core.selectors import SELECTORS
 from core.filters import ThreadsFilters
-from growth_config import GROWTH_SETTINGS, TARGETS
+from growth_config import GROWTH_SETTINGS
 
 logger = logging.getLogger(__name__)
 
 class ThreadsGrowthWorker:
-    def __init__(self, profile_id, target_username=None, db=None):
+    def __init__(self, profile_id, target_username, db=None):
         self.profile_id = profile_id
-        self.target_username = target_username or TARGETS[0] # Default to first target if none
+        if not target_username:
+            raise ValueError("target_username is required")
+        self.target_username = target_username
         self.settings = GROWTH_SETTINGS
         self.db = db or Database(Config.DB_PATH)
         self.gologin = GoLoginManager(gologin_token=Config.GOLOGIN_TOKEN)
