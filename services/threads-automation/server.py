@@ -269,12 +269,19 @@ async def get_logs():
     logs = cursor.fetchall()
     conn.close()
     
+    # Build a cache of profile_id -> name
+    profile_id_to_name = {}
+    for name in profile_manager.list_profile_names():
+        pid = profile_manager.get_profile_id_by_name(name)
+        if pid:
+            profile_id_to_name[pid] = name
+    
     # Format for JSON
     log_data = []
     for log in logs:
-        # Try to find profile name
-        profile_name = log[1] # Default to ID
-        # In a real app we'd map ID to Name efficiently
+        profile_id = log[1]
+        # Look up profile name, fallback to shortened ID
+        profile_name = profile_id_to_name.get(profile_id, profile_id[:8] + "...")
         
         log_data.append({
             "time": log[5],
