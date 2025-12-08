@@ -262,9 +262,9 @@ async def get_logs():
     conn = db.get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, profile_id, action_type, target_username, status, created_at, metadata 
+        SELECT id, profile_id, action_type, target_username, status, timestamp, metadata 
         FROM engagement_log 
-        ORDER BY created_at DESC LIMIT 50
+        ORDER BY timestamp DESC LIMIT 50
     """)
     logs = cursor.fetchall()
     conn.close()
