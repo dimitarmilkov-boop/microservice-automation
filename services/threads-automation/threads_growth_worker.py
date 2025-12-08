@@ -291,9 +291,16 @@ class ThreadsGrowthWorker:
                     except Exception:
                         pass
 
-                    # Check Idempotency (Skip if already followed)
+                    # Check Idempotency (Skip if already followed BY THIS PROFILE)
                     if username != "unknown" and self.db.is_user_followed(self.profile_id, username):
-                        print(f"[SKIP] Already followed user: {username}")
+                        # Don't spam - only print first 5 skips
+                        if not hasattr(self, '_skip_count'):
+                            self._skip_count = 0
+                        self._skip_count += 1
+                        if self._skip_count <= 5:
+                            print(f"[SKIP] Profile {self.profile_id[:8]} already followed @{username}")
+                        elif self._skip_count == 6:
+                            print(f"[SKIP] ... (suppressing further skip messages)")
                         continue
 
                     # Click
