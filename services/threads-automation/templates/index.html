@@ -43,6 +43,9 @@
                         <h5 class="card-title m-0">🌑 Dark Panel (Growth)</h5>
                     </div>
                     <p class="small text-muted">Targeted follow from `growth_config.py`</p>
+                    <div class="mb-2">
+                        <input type="text" id="growthTarget" class="form-control" placeholder="Target Username (e.g. zuck)">
+                    </div>
                     <div class="d-grid">
                         <button class="btn btn-primary" onclick="runWorker('growth')">Run Growth Once Now</button>
                     </div>
@@ -121,44 +124,70 @@
                 <!-- Live Logs -->
                 <div class="card">
                     <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
-                        <span>📜 Live Action Log</span>
-                        <small>Auto-refreshing...</small>
+                        <span>📜 Live Action Log (Last 50 actions)</span>
+                        <button class="btn btn-sm btn-outline-light" onclick="fetchLogs()">🔄 Refresh</button>
                     </div>
                     <div class="log-box" id="logBox">
-                        <div>Waiting for actions...</div>
+                        <div>Click Refresh to load actions...</div>
                     </div>
                 </div>
 
                 <!-- Recent Sessions -->
                 <div class="card">
-                    <div class="card-header">🕒 Recent Sessions</div>
-                    <div class="table-responsive">
+                    <div class="card-header">🕒 Recent Sessions (Last 50)</div>
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                         <table class="table table-hover table-sm mb-0">
                             <thead>
                                 <tr>
                                     <th>Time</th>
-                                    <th>Profile ID</th>
+                                    <th>Profile</th>
                                     <th>Type</th>
                                     <th>Status</th>
-                                    <th>Details</th>
+                                    <th>Results</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for session in sessions %}
                                 <tr>
-                                    <td>{{ session[3] }}</td>
-                                    <td><small>{{ session[1][:8] }}...</small></td>
-                                    <td>{{ session[2] }}</td>
+                                    <td><small>{{ session.time }}</small></td>
+                                    <td><strong>{{ session.profile_name }}</strong></td>
                                     <td>
-                                        {% if session[5] == 'running' %}
-                                            <span class="badge bg-primary">Running</span>
-                                        {% elif session[5] == 'completed' %}
-                                            <span class="badge bg-success">Completed</span>
+                                        {% if session.type == 'Growth' %}
+                                            <span class="badge bg-primary">Growth</span>
+                                        {% elif session.type == 'Comment' %}
+                                            <span class="badge bg-info">Comment</span>
                                         {% else %}
-                                            <span class="badge bg-danger">Failed</span>
+                                            <span class="badge bg-secondary">{{ session.type }}</span>
                                         {% endif %}
                                     </td>
-                                    <td><small>{{ session[6] }}</small></td>
+                                    <td>
+                                        {% if session.status == 'running' %}
+                                            <span class="badge bg-warning">Running</span>
+                                        {% elif session.status == 'completed' %}
+                                            <span class="badge bg-success">Completed</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">{{ session.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small>
+                                            {% if session.follows > 0 %}
+                                                <span class="text-primary">{{ session.follows }} follows</span>
+                                            {% endif %}
+                                            {% if session.comments > 0 %}
+                                                <span class="text-info">{{ session.comments }} comments</span>
+                                            {% endif %}
+                                            {% if session.likes > 0 %}
+                                                <span class="text-success">{{ session.likes }} likes</span>
+                                            {% endif %}
+                                            {% if session.errors > 0 %}
+                                                <span class="text-danger">({{ session.errors }} errors)</span>
+                                            {% endif %}
+                                            {% if session.follows == 0 and session.comments == 0 and session.likes == 0 %}
+                                                <span class="text-muted">-</span>
+                                            {% endif %}
+                                        </small>
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -179,10 +208,19 @@
                 return;
             }
 
-            if (!confirm(`Start ${type.toUpperCase()} worker for ${profileId}?`)) return;
-
             const formData = new FormData();
             formData.append('profile_id', profileId);
+
+            if (type === 'growth') {
+                const target = document.getElementById('growthTarget').value;
+                if (!target) {
+                    alert('Please enter a target username for Growth!');
+                    return;
+                }
+                formData.append('target_username', target);
+            }
+
+            if (!confirm(`Start ${type.toUpperCase()} worker for ${profileId}?`)) return;
 
             try {
                 const response = await fetch(`/api/run_${type}`, {
@@ -266,7 +304,9 @@
                 console.error(e);
             }
         }
-        setInterval(fetchLogs, 3000);
+        // Manual refresh only - no auto-polling
+        // Call fetchLogs() once on page load to show initial data
+        fetchLogs();
     </script>
 </body>
 </html>

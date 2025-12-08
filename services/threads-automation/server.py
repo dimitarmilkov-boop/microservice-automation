@@ -56,6 +56,15 @@ db = Database(Config.DB_PATH)
 # Profile Manager
 profile_manager = BrowserProfileManager()
 
+# Build profile ID -> Name cache ONCE at startup (not on every request)
+PROFILE_ID_TO_NAME = {}
+print("Building profile cache...")
+for name in profile_manager.list_profile_names():
+    pid = profile_manager.get_profile_id_by_name(name)
+    if pid:
+        PROFILE_ID_TO_NAME[pid] = name
+print(f"Cached {len(PROFILE_ID_TO_NAME)} profiles.")
+
 # Global State
 active_workers = {}
 worker_locks = {} # profile_id -> Lock
@@ -169,16 +178,62 @@ async def create_schedule(req: ScheduleRequest):
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
     """Render the main control panel"""
-    # Fetch recent sessions
+    # Fetch recent sessions with profile names (last 50)
     conn = db.get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM sessions ORDER BY started_at DESC LIMIT 10")
-    sessions = cursor.fetchall()
+    cursor.execute("""
+        SELECT id, profile_id, profile_name, started_at, ended_at, status, 
+               likes_performed, follows_performed, comments_performed, errors_count
+        FROM sessions ORDER BY started_at DESC LIMIT 50
+    """)
+    raw_sessions = cursor.fetchall()
     conn.close()
     
-    # Fetch Profiles
-    profile_names = profile_manager.list_profile_names()
-    profiles = [{"id": profile_manager.get_profile_id_by_name(name), "name": name} for name in profile_names]
+    # Format sessions for UI
+    sessions = []
+    for s in raw_sessions:
+        profile_id = s[1]
+        profile_name = s[2] or PROFILE_ID_TO_NAME.get(profile_id, profile_id[:8] if profile_id else "unknown")
+        
+        follows = s[7] or 0
+        comments = s[8] or 0
+        likes = s[6] or 0
+        errors = s[9] or 0
+        
+        # Determine session type from what was performed
+        if follows > 0:
+            session_type = "Growth"
+        elif comments > 0:
+            session_type = "Comment"
+        elif likes > 0:
+            session_type = "Like"
+        else:
+            session_type = "Unknown"
+        
+        # Build results string
+        results_parts = []
+        if follows > 0:
+            results_parts.append(f"{follows} follows")
+        if likes > 0:
+            results_parts.append(f"{likes} likes")
+        if comments > 0:
+            results_parts.append(f"{comments} comments")
+        results_str = " ".join(results_parts) if results_parts else "-"
+        
+        sessions.append({
+            "time": s[3],  # started_at
+            "profile_name": profile_name,
+            "type": session_type,
+            "status": s[5],  # status
+            "results": results_str,
+            "follows": follows,
+            "comments": comments,
+            "likes": likes,
+            "errors": errors
+        })
+    
+    # Use cached profiles (NO lookup loop!)
+    profiles = [{"id": pid, "name": pname} for pid, pname in PROFILE_ID_TO_NAME.items()]
     
     # Read Configs for display (Raw text for editing)
     growth_config_text = read_config_raw('growth_config.py')
@@ -195,14 +250,19 @@ async def read_root(request: Request):
 @app.post("/api/run_growth")
 async def run_growth(
     background_tasks: BackgroundTasks,
-    profile_id: str = Form(...)
+    profile_id: str = Form(...),
+    target_username: str = Form(None)
 ):
     if profile_id in active_workers and active_workers[profile_id].is_alive():
         return JSONResponse({"status": "error", "message": "Worker already running for this profile"})
 
-    def worker_wrapper(pid):
+    if not target_username:
+         # Fallback to default if not provided (though UI enforces it)
+         target_username = os.getenv("THREADS_DEFAULT_TARGET", "zuck")
+
+    def worker_wrapper(pid, target):
         try:
-            worker = ThreadsGrowthWorker(pid)
+            worker = ThreadsGrowthWorker(pid, target_username=target)
             worker.start()
         except Exception as e:
             logger.error(f"Growth worker failed: {e}")
@@ -210,11 +270,46 @@ async def run_growth(
             if pid in active_workers:
                 del active_workers[pid]
 
-    t = threading.Thread(target=worker_wrapper, args=(profile_id,))
+    t = threading.Thread(target=worker_wrapper, args=(profile_id, target_username))
     active_workers[profile_id] = t
     t.start()
     
-    return {"status": "success", "message": f"Started Growth Worker for {profile_id}"}
+    # Auto-schedule second session 6 hours later if not already scheduled
+    try:
+        current_time = datetime.now()
+        pending = db.get_pending_tasks()
+        has_future_growth = any(
+            t['profile_id'] == profile_id and 
+            t['task_type'] == 'growth' and 
+            datetime.fromisoformat(t['scheduled_time']) > current_time
+            for t in pending
+        )
+        
+        if not has_future_growth:
+            next_time = current_time + timedelta(hours=6)
+            # Ensure it's within active hours (9-22)
+            if next_time.hour < 9:
+                next_time = next_time.replace(hour=9, minute=random.randint(0,30))
+            elif next_time.hour > 22:
+                next_time = next_time + timedelta(days=1)
+                next_time = next_time.replace(hour=9, minute=random.randint(0,30))
+            
+            # Get profile name for DB
+            pname = PROFILE_ID_TO_NAME.get(profile_id, "Unknown")
+            
+            db.add_scheduled_task(
+                profile_id=profile_id, 
+                task_type='growth', 
+                scheduled_time=next_time,
+                target_username=target_username,
+                profile_name=pname
+            )
+            logger.info(f"Auto-scheduled follow-up growth session for {profile_id} at {next_time}")
+            
+    except Exception as e:
+        logger.error(f"Failed to auto-schedule follow-up: {e}")
+    
+    return {"status": "success", "message": f"Started Growth Worker for {profile_id} on @{target_username}"}
 
 @app.post("/api/run_comment")
 async def run_comment(
@@ -262,19 +357,18 @@ async def get_logs():
     conn = db.get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, profile_id, action_type, target_username, status, created_at, metadata 
+        SELECT id, profile_id, action_type, target_username, status, timestamp, metadata 
         FROM engagement_log 
-        ORDER BY created_at DESC LIMIT 50
+        ORDER BY timestamp DESC LIMIT 50
     """)
     logs = cursor.fetchall()
     conn.close()
     
-    # Format for JSON
+    # Format for JSON (use cached profile mapping)
     log_data = []
     for log in logs:
-        # Try to find profile name
-        profile_name = log[1] # Default to ID
-        # In a real app we'd map ID to Name efficiently
+        profile_id = log[1]
+        profile_name = PROFILE_ID_TO_NAME.get(profile_id, profile_id[:8] + "...")
         
         log_data.append({
             "time": log[5],

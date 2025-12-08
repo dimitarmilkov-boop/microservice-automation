@@ -19,6 +19,7 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 
 from shared.browser_automation.gologin_manager import GoLoginManager, GoLoginSession
+from shared.browser_automation.browser_profiles import BrowserProfileManager
 from config import Config
 from database import Database
 from core.ai_generator import AICommentGenerator
@@ -36,14 +37,31 @@ class ThreadsCommentWorker:
         self.ai = AICommentGenerator()
         self.session_id = str(uuid.uuid4())
         
+        # Get profile name for logging
+        self.profile_name = self._get_profile_name()
+        
         self.screenshot_dir = Path(__file__).parent / 'screenshots' / 'comments'
         self.screenshot_dir.mkdir(parents=True, exist_ok=True)
         
         self.stats = {
+            "likes": 0,
             "comments": 0,
+            "follows": 0,
             "processed": 0,
             "errors": 0
         }
+    
+    def _get_profile_name(self):
+        """Get the GoLogin profile name from profile_id"""
+        try:
+            profile_manager = BrowserProfileManager()
+            for name in profile_manager.list_profile_names():
+                pid = profile_manager.get_profile_id_by_name(name)
+                if pid == self.profile_id:
+                    return name
+            return self.profile_id[:8]
+        except:
+            return self.profile_id[:8]
 
     def take_screenshot(self, driver, name):
         try:
@@ -58,15 +76,19 @@ class ThreadsCommentWorker:
 
     def start(self):
         print(f"\n{'='*80}")
-        print(f"[COMMENT SESSION] Profile: {self.profile_id}")
+        print(f"[COMMENT SESSION] Profile: {self.profile_name} ({self.profile_id[:8]})")
         print(f"Goal: {self.settings['max_comments_per_session']} comments")
         print(f"Provider: {self.settings['ai_provider']}")
         print(f"{'='*80}\n")
+        
+        # Create session in DB at the start
+        self.db.create_session(self.session_id, self.profile_id, self.profile_name)
         
         try:
             # Check limits
             if self.db.is_daily_limit_reached(self.profile_id, 'comment', 100):
                 print("[LIMIT] Daily comment limit reached. Stopping.")
+                self.db.update_session(self.session_id, status='completed', log_summary='Daily limit reached')
                 return
 
             print("[1/4] Launching browser...")
@@ -82,8 +104,10 @@ class ThreadsCommentWorker:
         except Exception as e:
             print(f"[ERROR] Session failed: {e}")
             traceback.print_exc()
+            self.stats['errors'] += 1
+            self.db.update_session(self.session_id, status='failed', errors_count=self.stats['errors'])
         finally:
-            print(f"\n[COMPLETE] Comments: {self.stats['comments']} | Processed: {self.stats['processed']}")
+            print(f"\n[COMPLETE] Comments: {self.stats['comments']} | Likes: {self.stats['likes']} | Processed: {self.stats['processed']}")
             # Log final stats to DB
             self.db.complete_session(self.session_id, self.stats)
 
@@ -96,9 +120,6 @@ class ThreadsCommentWorker:
         driver.get(url)
         time.sleep(5) # Wait for initial load
         self.take_screenshot(driver, 'feed_loaded')
-        
-        # Create session in DB
-        self.db.create_session(self.session_id, self.profile_id, "Commenter")
 
     def _process_feed(self, driver):
         print("[3/4] Processing Feed...")
@@ -263,6 +284,7 @@ class ThreadsCommentWorker:
                             target_url=url, status="success"
                         )
                         self.db.update_daily_stats(self.profile_id, "like", 1)
+                        self.stats['likes'] += 1  # Track in session stats
                         time.sleep(random.uniform(1, 2))
                 except Exception as e:
                     print(f"[WARN] Failed to like post: {e}")
