@@ -270,24 +270,32 @@ class ThreadsCommentWorker:
             driver.execute_script("arguments[0].click();", reply_btn)
             time.sleep(2)  # Wait for modal
             
-            # 4. FIND INPUT IN MODAL
-            modal = None
+            # 4. FIND INPUT (NO MODAL - it's inline with role="textbox")
             input_el = None
             
             for attempt in range(3):
                 try:
-                    modal = driver.find_element(By.CSS_SELECTOR, '[role="dialog"]')
-                    inputs = modal.find_elements(By.CSS_SELECTOR, 'div[contenteditable="true"]')
-                    if inputs:
-                        input_el = inputs[0]
-                        print(f"[INPUT] Found in modal (attempt {attempt + 1})")
+                    # Primary: div[role="textbox"][contenteditable="true"]
+                    input_el = driver.find_element(By.CSS_SELECTOR, 'div[role="textbox"][contenteditable="true"]')
+                    if input_el:
+                        print(f"[INPUT] Found textbox (attempt {attempt + 1})")
                         break
                 except:
                     pass
+                
+                try:
+                    # Fallback: aria-label contains "Empty text field"
+                    input_el = driver.find_element(By.CSS_SELECTOR, 'div[aria-label*="Empty text field"]')
+                    if input_el:
+                        print(f"[INPUT] Found via aria-label (attempt {attempt + 1})")
+                        break
+                except:
+                    pass
+                
                 time.sleep(1)
             
             if not input_el:
-                raise Exception("Input field not found in modal")
+                raise Exception("Input field not found")
             
             # 5. GENERATE AI COMMENT
             print("[AI] Generating...")
@@ -316,17 +324,18 @@ class ThreadsCommentWorker:
             self._human_type(input_el, comment)
             time.sleep(1)
             
-            # 7. CLICK POST BUTTON
+            # 7. CLICK POST BUTTON (search globally, not in modal)
             post_btn = None
             for attempt in range(3):
                 try:
-                    # Find Post button in modal
-                    btns = modal.find_elements(By.XPATH, ".//div[@role='button']")
+                    # Find Post button globally
+                    btns = driver.find_elements(By.XPATH, "//div[@role='button']")
                     for btn in btns:
                         if btn.text.strip() == "Post":
                             post_btn = btn
                             break
                     if post_btn:
+                        print(f"[POST] Found button (attempt {attempt + 1})")
                         break
                 except:
                     pass
