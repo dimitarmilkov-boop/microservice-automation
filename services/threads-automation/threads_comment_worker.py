@@ -265,94 +265,55 @@ class ThreadsCommentWorker:
                 except Exception as e:
                     print(f"[LIKE] Failed: {e}")
             
-            # 3. CLOSE ANY EXISTING MODALS FIRST (important!)
-            try:
-                existing_modals = driver.find_elements(By.CSS_SELECTOR, '[role="dialog"]')
-                if existing_modals:
-                    print(f"[DEBUG] Found {len(existing_modals)} existing modal(s), closing with Escape...")
-                    ActionChains(driver).send_keys(Keys.ESCAPE).perform()
-                    time.sleep(1)
-            except:
-                pass
-            
-            # 4. CLICK REPLY
-            print(f"[REPLY] Clicking Reply button for post: {url[:50]}...")
+            # 3. CLICK REPLY
+            print(f"[REPLY] Clicking Reply for: {url[:50]}...")
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", reply_btn)
             time.sleep(0.5)
-            
-            # Log what we're clicking
-            try:
-                reply_btn_text = reply_btn.text
-                reply_btn_aria = reply_btn.get_attribute('aria-label')
-                print(f"[DEBUG] Reply button text='{reply_btn_text}', aria-label='{reply_btn_aria}'")
-            except:
-                pass
-            
             driver.execute_script("arguments[0].click();", reply_btn)
-            time.sleep(2)  # Wait for modal/input
+            time.sleep(2)  # Wait for input to appear and auto-focus
             
-            # 5. FIND INPUT - Must be REPLY input, NOT "New thread" composer!
+            # 4. FIND INPUT - Use the FOCUSED element (Threads auto-focuses reply input!)
             input_el = None
             
-            # First, check if a modal opened
-            modal = None
+            # Method 1: Get the currently focused element (BEST approach)
             try:
-                modal = driver.find_element(By.CSS_SELECTOR, '[role="dialog"]')
-                # Check modal title to verify it's a REPLY modal, not "New thread"
-                try:
-                    modal_title = modal.find_element(By.XPATH, ".//span[contains(text(), 'New thread') or contains(text(), 'Reply')]")
-                    title_text = modal_title.text
-                    print(f"[DEBUG] Modal title: '{title_text}'")
-                    
-                    if "New thread" in title_text:
-                        print("[ERROR] Wrong modal opened! This is 'New thread', not Reply. Closing...")
-                        ActionChains(driver).send_keys(Keys.ESCAPE).perform()
-                        time.sleep(1)
-                        raise Exception("Wrong modal - New thread instead of Reply")
-                except NoSuchElementException:
-                    print("[DEBUG] Modal found but no title detected")
-            except NoSuchElementException:
-                print("[DEBUG] No modal found - looking for inline input")
+                input_el = driver.switch_to.active_element
+                # Verify it's actually an input (contenteditable)
+                is_editable = driver.execute_script("return arguments[0].isContentEditable;", input_el)
+                if is_editable:
+                    print("[INPUT] Using focused element (active_element)")
+                else:
+                    print("[DEBUG] Focused element not editable, searching...")
+                    input_el = None
+            except Exception as e:
+                print(f"[DEBUG] active_element failed: {e}")
             
-            # Find the input
-            for attempt in range(3):
+            # Method 2: If no focused input, check for modal
+            if not input_el:
                 try:
-                    # Get ALL textboxes and log them
-                    all_inputs = driver.find_elements(By.CSS_SELECTOR, 'div[role="textbox"][contenteditable="true"]')
-                    print(f"[DEBUG] Found {len(all_inputs)} textbox(es) on page:")
-                    
-                    for i, inp in enumerate(all_inputs):
-                        try:
-                            aria = inp.get_attribute('aria-label') or "no aria-label"
-                            placeholder = inp.text[:30] if inp.text else "empty"
-                            print(f"  [{i}] aria-label='{aria}', text='{placeholder}'")
-                        except:
-                            pass
-                    
-                    # Pick the CORRECT one - NOT the "What's new?" or "New thread" composer
-                    for inp in all_inputs:
-                        aria = inp.get_attribute('aria-label') or ""
-                        # Skip the main composer (usually has "What's new" or "Type to compose")
-                        if "What's new" in aria or "compose a new post" in aria:
-                            print(f"[DEBUG] Skipping main composer: '{aria}'")
-                            continue
-                        
-                        # This should be the reply input
-                        input_el = inp
-                        print(f"[INPUT] Selected textbox with aria='{aria}'")
-                        break
-                    
-                    if input_el:
-                        break
-                        
-                except Exception as e:
-                    print(f"[DEBUG] Attempt {attempt + 1} failed: {e}")
-                
-                time.sleep(1)
+                    modal = driver.find_element(By.CSS_SELECTOR, '[role="dialog"]')
+                    print("[MODE] Modal detected - searching inside")
+                    input_el = modal.find_element(By.CSS_SELECTOR, 'div[contenteditable="true"]')
+                    print("[INPUT] Found in modal")
+                except:
+                    pass
+            
+            # Method 3: Find the LAST textbox (newly added inline reply)
+            if not input_el:
+                all_textboxes = driver.find_elements(By.CSS_SELECTOR, 'div[role="textbox"][contenteditable="true"]')
+                print(f"[DEBUG] Found {len(all_textboxes)} textboxes")
+                if len(all_textboxes) >= 2:
+                    # Two textboxes = main composer + reply input
+                    input_el = all_textboxes[-1]  # Last one is the reply
+                    print("[INPUT] Using last textbox (reply input)")
+                elif len(all_textboxes) == 1:
+                    # Only one - might be the reply if no main composer visible
+                    input_el = all_textboxes[0]
+                    print("[INPUT] Using only textbox found")
             
             if not input_el:
-                self.take_screenshot(driver, f'no_input_found_{self.stats["processed"]}')
-                raise Exception("No valid reply input found (all inputs are main composer)")
+                self.take_screenshot(driver, f'no_input_{self.stats["processed"]}')
+                raise Exception("No reply input found")
             
             # 5. GENERATE AI COMMENT
             print("[AI] Generating...")
