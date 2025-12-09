@@ -274,9 +274,15 @@ class ThreadsCommentWorker:
                         like_container = like_btn.find_element(By.XPATH, "./ancestor::div[@role='button' or contains(@class, 'x1i10hfl')][1]")
                         
                         print("[ACTION] Clicking Like...")
-                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_container)
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", like_container)
                         time.sleep(0.5)
-                        like_container.click()
+                        
+                        try:
+                            like_container.click()
+                        except:
+                            # Fallback to JS click if intercepted
+                            print("[DEBUG] Click intercepted, using JS click...")
+                            driver.execute_script("arguments[0].click();", like_container)
                         
                         # Log Like
                         self.db.log_action(
@@ -295,44 +301,88 @@ class ThreadsCommentWorker:
             reply_container = reply_btn.find_element(By.XPATH, "./ancestor::div[@role='button' or contains(@class, 'x1i10hfl')][1]")
             
             print("[ACTION] Clicking Reply...")
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", reply_container)
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center', behavior: 'smooth'});", reply_container)
             time.sleep(1)
-            reply_container.click()
+            
+            try:
+                reply_container.click()
+            except:
+                # Fallback to JS click if intercepted
+                print("[DEBUG] Click intercepted, using JS click...")
+                driver.execute_script("arguments[0].click();", reply_container)
             
             # 3. Wait for Modal or Input
-            # Extension logic: Wait for modal
-            time.sleep(2)
+            # Match extension's wait logic
+            time.sleep(2)  # Initial wait for modal
             
-            # Find input
-            # PRIORITY: Look inside a Modal Dialog first
-            modal = None
-            try:
-                modal = driver.find_element(By.CSS_SELECTOR, '[role="dialog"]')
-                print("[DEBUG] Modal dialog detected. Scoping search to modal.")
-            except:
-                pass
-
-            try:
-                if modal:
-                    # Search INSIDE the modal
-                    input_el = modal.find_element(By.XPATH, './/div[@contenteditable="true"]')
-                else:
-                    # Inline reply: Search globally but wait for visibility
-                    # Use the specific aria-label to be sure
-                    input_el = WebDriverWait(driver, 5).until(
-                        EC.visibility_of_element_located((By.XPATH, '//div[@contenteditable="true" and @aria-label="Reply to thread"]'))
-                    )
-            except:
-                # Fallback: Find ALL inputs and take the last one (usually the new one or the one under the current post)
-                inputs = driver.find_elements(By.XPATH, '//div[@contenteditable="true"]')
-                if inputs:
-                    input_el = inputs[-1] # Pick the last one
-                else:
-                    raise Exception("No input field found")
-                
-            print("[DEBUG] Input found.")
+            # Find input with retries (extension does 3 attempts)
+            input_el = None
+            for attempt in range(3):
+                try:
+                    print(f"[DEBUG] Attempt {attempt + 1} to find input...")
+                    
+                    # Strategy 1: Modal-aware search (priority)
+                    modal = None
+                    try:
+                        modal = driver.find_element(By.CSS_SELECTOR, '[role="dialog"]')
+                        print("[DEBUG] Modal detected.")
+                    except:
+                        pass
+                    
+                    if modal:
+                        # Find contenteditable inside modal
+                        inputs = modal.find_elements(By.XPATH, './/div[@contenteditable="true"]')
+                        if inputs:
+                            input_el = inputs[0]  # First input in modal
+                    else:
+                        # Strategy 2: Global search for reply input
+                        inputs = driver.find_elements(By.XPATH, '//div[@contenteditable="true"]')
+                        if inputs:
+                            input_el = inputs[-1]  # Last input (likely the new one)
+                    
+                    if input_el:
+                        print("[DEBUG] Input found.")
+                        break
+                    
+                    time.sleep(1)  # Wait before retry
+                except:
+                    pass
             
-            # 4. Generate Comment
+            if not input_el:
+                raise Exception("No input field found after 3 attempts")
+            
+            # 4. AGGRESSIVELY clear input (match extension's logic)
+            print("[DEBUG] Clearing input field...")
+            input_el.click()
+            time.sleep(0.3)
+            
+            # Method 1: Clear via JavaScript (innerHTML, textContent, innerText)
+            driver.execute_script("""
+                arguments[0].innerHTML = '';
+                arguments[0].textContent = '';
+                arguments[0].innerText = '';
+            """, input_el)
+            
+            # Method 2: Send backspace events (10 times like extension)
+            for _ in range(10):
+                input_el.send_keys(Keys.BACK_SPACE)
+            
+            # Dispatch input/change events to trigger React updates
+            driver.execute_script("""
+                arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
+                arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+                arguments[0].dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+            """, input_el)
+            
+            time.sleep(0.5)
+            
+            # Verify field is empty
+            current_text = driver.execute_script("return arguments[0].textContent || arguments[0].value || '';", input_el)
+            if current_text.strip():
+                print(f"[WARN] Field still has content: '{current_text}', forcing clear...")
+                driver.execute_script("arguments[0].innerHTML = ''; arguments[0].textContent = '';", input_el)
+            
+            # 5. Generate Comment
             print("[AI] Generating comment...")
             comment = self.ai.generate_comment(
                 clean_text, 
@@ -341,33 +391,77 @@ class ThreadsCommentWorker:
             )
             print(f"[AI] Generated: {comment}")
             
-            # 5. Type Comment (Human-like)
-            input_el.click()
-            time.sleep(0.5)
+            # 6. Focus and Type Comment
+            driver.execute_script("arguments[0].focus();", input_el)
+            time.sleep(0.3)
+            
             self._human_type(input_el, comment)
             
-            # 6. Click Post
-            time.sleep(1)
+            # 7. Verify text was typed successfully
+            time.sleep(0.5)
+            typed_text = driver.execute_script("return arguments[0].textContent || arguments[0].value || '';", input_el)
+            print(f"[DEBUG] Text in input after typing: '{typed_text}'")
             
-            if modal:
-                post_btn = modal.find_element(By.XPATH, ".//div[text()='Post' and @role='button']")
-            else:
-                # Find all 'Post' buttons and click the last visible one
-                post_btns = driver.find_elements(By.XPATH, "//div[text()='Post' and @role='button']")
-                post_btn = post_btns[-1] if post_btns else None
-
+            # Re-type if text was lost (common Threads bug)
+            if len(typed_text.strip()) == 0:
+                print("[WARN] Text was lost, re-typing...")
+                driver.execute_script("arguments[0].focus();", input_el)
+                time.sleep(0.3)
+                self._human_type(input_el, comment)
+                time.sleep(0.5)
+            
+            # 8. Find Post button with retries (extension does 3 attempts)
+            post_btn = None
+            for attempt in range(3):
+                print(f"[DEBUG] Attempt {attempt + 1} to find Post button...")
+                try:
+                    if modal:
+                        # Search inside modal first
+                        post_btns = modal.find_elements(By.XPATH, ".//div[text()='Post' and @role='button']")
+                        if post_btns:
+                            post_btn = post_btns[0]
+                    else:
+                        # Global search
+                        post_btns = driver.find_elements(By.XPATH, "//div[text()='Post' and @role='button']")
+                        if post_btns:
+                            post_btn = post_btns[-1]  # Last one
+                    
+                    if post_btn:
+                        break
+                    
+                    time.sleep(1)  # Wait before retry
+                except:
+                    pass
+            
+            # 9. Click Post button or fallback to Enter key
             if post_btn:
                 print("[ACTION] Clicking Post...")
-                post_btn.click()
-                time.sleep(3) # Wait for submission
+                try:
+                    post_btn.click()
+                except:
+                    # Fallback: JavaScript click
+                    print("[DEBUG] Regular click failed, using JS click...")
+                    driver.execute_script("arguments[0].click();", post_btn)
                 
-                # Log Success
-                self.db.log_action(
-                    self.session_id, self.profile_id, "comment", 
-                    target_url=url, status="success", metadata={"text": comment}
-                )
-                self.stats['comments'] += 1
-                return True
+                time.sleep(3)  # Wait for submission
+            else:
+                # Extension's fallback: Press Enter key
+                print("[WARN] Post button not found, trying Enter key...")
+                input_el.send_keys(Keys.RETURN)
+                time.sleep(0.5)
+                # Also try Ctrl+Enter
+                ActionChains(driver).key_down(Keys.CONTROL).send_keys(Keys.RETURN).key_up(Keys.CONTROL).perform()
+                time.sleep(3)
+            
+            # Log Success
+            self.db.log_action(
+                self.session_id, self.profile_id, "comment", 
+                target_url=url, status="success", metadata={"text": comment}
+            )
+            self.stats['comments'] += 1
+            self.db.update_daily_stats(self.profile_id, "comment", 1)
+            print(f"[SUCCESS] Comment posted!")
+            return True
                 
         except Exception as e:
             print(f"[ERROR] Failed to comment: {e}")
