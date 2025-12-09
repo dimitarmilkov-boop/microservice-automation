@@ -118,16 +118,18 @@ THREADS_DEFAULT_TARGET=zuck
 | Feature                                            | Status |
 | -------------------------------------------------- | ------ |
 | Navigate to "For You" feed                         | ✅     |
-| Detect posts using `[data-pressable-container]`    | ✅     |
+| Detect posts using Reply buttons                   | ✅     |
 | Extract post text (robust `[dir="auto"]` strategy) | ✅     |
 | Filter spam/link-farm posts                        | ✅     |
 | Skip already-commented posts (DB check)            | ✅     |
 | Like post before commenting                        | ✅     |
 | Click Reply button                                 | ✅     |
-| Find comment input (modal-aware)                   | ✅     |
+| **Handle BOTH modal and inline reply**             | ✅     |
+| **Use active_element for focused input**           | ✅     |
 | Generate context-aware AI comment (OpenAI/Groq)    | ✅     |
 | Human-like typing simulation                       | ✅     |
-| Submit comment                                     | ✅     |
+| Submit comment (Post button or Enter fallback)     | ✅     |
+| **Hard stop when goal reached**                    | ✅     |
 | Emoji/special character stripping                  | ✅     |
 | Log comments to `engagement_log` table             | ✅     |
 
@@ -197,6 +199,16 @@ When you run Growth targeting `@zuck`:
 ---
 
 ## Changelog
+
+### 2024-12-09
+- ✅ **AI Commenter Fully Working:**
+  - Fixed input finding (uses `active_element` - Threads auto-focuses reply input)
+  - Handles BOTH modal and inline reply scenarios
+  - Proper goal enforcement (hard stop when limit reached)
+  - Posts Reply buttons → get parent post → like + comment
+- ✅ **Debugging methodology:**
+  - JS debug scripts to analyze Threads DOM
+  - Identified inline vs modal reply behavior
 
 ### 2024-12-08
 - ✅ **Human Protocol Implementation:**
