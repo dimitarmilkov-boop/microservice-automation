@@ -4,7 +4,7 @@ Configuration for Threads Comment Worker (White Panel)
 
 COMMENT_SETTINGS = {
     "feed_type": "for_you", # or "following"
-    "max_comments_per_session": 20,
+    "max_comments_per_session": 10,  # Conservative limit to avoid rate limiting
     "enable_like": True, # Like post before commenting
     "enable_comment": True,
     "stealth_mode": True, # Use human-like typing simulation

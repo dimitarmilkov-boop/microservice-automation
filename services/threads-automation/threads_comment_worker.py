@@ -173,8 +173,15 @@ class ThreadsCommentWorker:
                 except Exception as e:
                     print(f"[WARN] Failed to process post: {e}")
             
+            # HARD STOP: Check if goal reached after processing batch
+            if self.stats['comments'] >= self.settings['max_comments_per_session']:
+                print(f"\n{'='*60}")
+                print(f"[GOAL REACHED] {self.stats['comments']}/{self.settings['max_comments_per_session']} comments!")
+                print(f"{'='*60}")
+                break
+            
             # Scroll down
-            print("[SCROLL] Loading more posts...")
+            print(f"[SCROLL] Loading more posts... (comments: {self.stats['comments']}/{self.settings['max_comments_per_session']})")
             driver.execute_script("window.scrollBy(0, 800);")
             time.sleep(self.settings['scroll_delay'])
             scrolls += 1
