@@ -351,38 +351,7 @@ class ThreadsCommentWorker:
             if not input_el:
                 raise Exception("No input field found after 3 attempts")
             
-            # 4. AGGRESSIVELY clear input (match extension's logic)
-            print("[DEBUG] Clearing input field...")
-            input_el.click()
-            time.sleep(0.3)
-            
-            # Method 1: Clear via JavaScript (innerHTML, textContent, innerText)
-            driver.execute_script("""
-                arguments[0].innerHTML = '';
-                arguments[0].textContent = '';
-                arguments[0].innerText = '';
-            """, input_el)
-            
-            # Method 2: Send backspace events (10 times like extension)
-            for _ in range(10):
-                input_el.send_keys(Keys.BACK_SPACE)
-            
-            # Dispatch input/change events to trigger React updates
-            driver.execute_script("""
-                arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
-                arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
-                arguments[0].dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-            """, input_el)
-            
-            time.sleep(0.5)
-            
-            # Verify field is empty
-            current_text = driver.execute_script("return arguments[0].textContent || arguments[0].value || '';", input_el)
-            if current_text.strip():
-                print(f"[WARN] Field still has content: '{current_text}', forcing clear...")
-                driver.execute_script("arguments[0].innerHTML = ''; arguments[0].textContent = '';", input_el)
-            
-            # 5. Generate Comment
+            # 4. Generate Comment FIRST (before interacting with input)
             print("[AI] Generating comment...")
             comment = self.ai.generate_comment(
                 clean_text, 
@@ -391,65 +360,71 @@ class ThreadsCommentWorker:
             )
             print(f"[AI] Generated: {comment}")
             
-            # 6. Focus and Type Comment
-            driver.execute_script("arguments[0].focus();", input_el)
+            # 5. Clear input using PURE SELENIUM (no JS innerHTML - blocked by TrustedTypes)
+            print("[DEBUG] Clearing and focusing input...")
+            
+            # Scroll element into view
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", input_el)
             time.sleep(0.3)
             
+            # Click to focus
+            try:
+                input_el.click()
+            except:
+                driver.execute_script("arguments[0].click();", input_el)
+            time.sleep(0.3)
+            
+            # Clear using Ctrl+A, Delete (works with contenteditable)
+            ActionChains(driver).key_down(Keys.CONTROL).send_keys('a').key_up(Keys.CONTROL).perform()
+            time.sleep(0.1)
+            input_el.send_keys(Keys.DELETE)
+            time.sleep(0.3)
+            
+            # 6. Type Comment character by character (human-like)
+            print("[DEBUG] Typing comment...")
             self._human_type(input_el, comment)
+            time.sleep(1)
             
-            # 7. Verify text was typed successfully
-            time.sleep(0.5)
-            typed_text = driver.execute_script("return arguments[0].textContent || arguments[0].value || '';", input_el)
-            print(f"[DEBUG] Text in input after typing: '{typed_text}'")
-            
-            # Re-type if text was lost (common Threads bug)
-            if len(typed_text.strip()) == 0:
-                print("[WARN] Text was lost, re-typing...")
-                driver.execute_script("arguments[0].focus();", input_el)
-                time.sleep(0.3)
-                self._human_type(input_el, comment)
-                time.sleep(0.5)
-            
-            # 8. Find Post button with retries (extension does 3 attempts)
+            # 7. Find Post button with retries
             post_btn = None
             for attempt in range(3):
                 print(f"[DEBUG] Attempt {attempt + 1} to find Post button...")
                 try:
-                    if modal:
-                        # Search inside modal first
-                        post_btns = modal.find_elements(By.XPATH, ".//div[text()='Post' and @role='button']")
+                    # Try multiple selectors
+                    selectors = [
+                        ".//div[text()='Post' and @role='button']",
+                        ".//div[contains(text(), 'Post')][@role='button']",
+                        ".//span[text()='Post']/ancestor::div[@role='button']"
+                    ]
+                    
+                    search_context = modal if modal else driver
+                    
+                    for selector in selectors:
+                        post_btns = search_context.find_elements(By.XPATH, selector)
                         if post_btns:
-                            post_btn = post_btns[0]
-                    else:
-                        # Global search
-                        post_btns = driver.find_elements(By.XPATH, "//div[text()='Post' and @role='button']")
-                        if post_btns:
-                            post_btn = post_btns[-1]  # Last one
+                            post_btn = post_btns[-1]  # Last one (most likely the submit)
+                            break
                     
                     if post_btn:
                         break
                     
-                    time.sleep(1)  # Wait before retry
+                    time.sleep(1)
                 except:
                     pass
             
-            # 9. Click Post button or fallback to Enter key
+            # 8. Click Post button or fallback to Ctrl+Enter
             if post_btn:
                 print("[ACTION] Clicking Post...")
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", post_btn)
+                time.sleep(0.3)
                 try:
                     post_btn.click()
                 except:
-                    # Fallback: JavaScript click
-                    print("[DEBUG] Regular click failed, using JS click...")
                     driver.execute_script("arguments[0].click();", post_btn)
-                
-                time.sleep(3)  # Wait for submission
+                time.sleep(3)
             else:
-                # Extension's fallback: Press Enter key
-                print("[WARN] Post button not found, trying Enter key...")
-                input_el.send_keys(Keys.RETURN)
-                time.sleep(0.5)
-                # Also try Ctrl+Enter
+                # Fallback: Ctrl+Enter to submit
+                print("[WARN] Post button not found, using Ctrl+Enter...")
                 ActionChains(driver).key_down(Keys.CONTROL).send_keys(Keys.RETURN).key_up(Keys.CONTROL).perform()
                 time.sleep(3)
             
