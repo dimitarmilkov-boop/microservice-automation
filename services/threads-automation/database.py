@@ -83,6 +83,12 @@ class Database:
                 """)
                 
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_daily_profile_date ON daily_limits(profile_id, date)")
+                
+                # Check and add posts_count column if missing (migration)
+                cursor.execute("PRAGMA table_info(daily_limits)")
+                columns = [info[1] for info in cursor.fetchall()]
+                if 'posts_count' not in columns:
+                    cursor.execute("ALTER TABLE daily_limits ADD COLUMN posts_count INTEGER DEFAULT 0")
 
                 # =====================================================
                 # 3. ENGAGEMENT LOG TABLE - Detailed action log with usernames
@@ -279,7 +285,8 @@ class Database:
             column_map = {
                 'follow': 'follows_count',
                 'like': 'likes_count', 
-                'comment': 'comments_count'
+                'comment': 'comments_count',
+                'post': 'posts_count'
             }
             column = column_map.get(action_type)
             
@@ -316,17 +323,41 @@ class Database:
                 return dict(row)
             return {'follows_count': 0, 'likes_count': 0, 'comments_count': 0}
 
+    def get_daily_post_count(self, profile_id: str, target_date: date = None) -> int:
+        """Get number of posts made today"""
+        stats = self.get_daily_stats(profile_id, target_date)
+        return stats.get('posts_count', 0)
+
     def is_daily_limit_reached(self, profile_id: str, action_type: str, limit: int) -> bool:
         """Check if daily limit has been reached for an action type"""
         stats = self.get_daily_stats(profile_id)
         column_map = {
             'follow': 'follows_count',
             'like': 'likes_count',
-            'comment': 'comments_count'
+            'comment': 'comments_count',
+            'post': 'posts_count'
         }
         column = column_map.get(action_type, 'likes_count')
         current = stats.get(column, 0)
         return current >= limit
+
+    def get_used_photos(self, profile_id: str) -> set:
+        """Get set of photo filenames already used by this profile"""
+        with self._get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT metadata FROM engagement_log WHERE profile_id = ? AND action_type = 'post' AND status = 'success'",
+                (profile_id,)
+            )
+            used = set()
+            for row in cursor.fetchall():
+                try:
+                    if row['metadata']:
+                        meta = json.loads(row['metadata'])
+                        if 'photo_filename' in meta:
+                            used.add(meta['photo_filename'])
+                except Exception:
+                    pass
+            return used
 
     def is_user_followed(self, profile_id: str, username: str) -> bool:
         """Check if a specific user has already been followed by this profile"""

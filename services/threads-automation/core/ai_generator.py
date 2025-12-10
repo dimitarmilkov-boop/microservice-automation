@@ -99,3 +99,4 @@ class AICommentGenerator:
         except Exception as e:
             logger.error(f"AI Generation failed: {e}")
             return random.choice(self.manual_comments)
+
