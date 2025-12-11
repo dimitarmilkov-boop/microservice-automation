@@ -62,6 +62,42 @@
                     </div>
                 </div>
 
+                <!-- Post Panel -->
+                <div class="card p-3 border-start border-4 border-success">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="card-title m-0">📸 Post Panel (Content Creator)</h5>
+                    </div>
+                    <p class="small text-muted">Upload photo + AI caption</p>
+                    
+                    <!-- Photo Upload Section -->
+                    <div class="mb-2">
+                        <label class="form-label small">Select Photo</label>
+                        <input type="file" class="form-control form-control-sm" id="photoInput" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" onchange="previewPhoto(event)">
+                        <div class="form-text" style="font-size: 0.7rem;">Max 3 posts/day. Formats: JPG, PNG, WEBP</div>
+                    </div>
+                    
+                    <!-- Topic/Hint Field -->
+                    <div class="mb-2">
+                        <label class="form-label small">Topic/Hint (optional)</label>
+                        <input type="text" class="form-control form-control-sm" id="photoTopic" placeholder="e.g., nature, food, travel">
+                        <div class="form-text" style="font-size: 0.7rem;">Help AI generate better caption</div>
+                    </div>
+                    
+                    <!-- Photo Preview -->
+                    <div id="photoPreview" class="mb-2" style="display: none;">
+                        <img id="previewImage" src="" alt="Preview" style="max-width: 100%; max-height: 200px; border-radius: 8px; border: 2px solid #dee2e6;">
+                    </div>
+                    
+                    <!-- Action Button -->
+                    <div class="d-grid">
+                        <button class="btn btn-success" id="uploadPostBtn" onclick="uploadAndPost()" disabled>
+                            🚀 Upload & Post Now
+                        </button>
+                    </div>
+                    
+                    <div id="uploadStatus" class="mt-2" style="font-size: 0.75rem;"></div>
+                </div>
+
                 <!-- Scheduler -->
                 <div class="card p-3 border-start border-4 border-warning">
                     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -73,6 +109,7 @@
                             <select class="form-select form-select-sm" id="schedTaskType">
                                 <option value="growth">Growth (Follow)</option>
                                 <option value="comment">Comment (AI)</option>
+                                <option value="post">Post (Photo + Caption)</option>
                             </select>
                         </div>
                         <div class="row g-2 mb-2">
@@ -121,20 +158,64 @@
 
             <!-- Right Column: Logs & Status -->
             <div class="col-md-8">
+                
+                <!-- Statistics Dashboard -->
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <div class="card text-center p-2 border-success">
+                            <div class="card-body p-2">
+                                <h6 class="text-success mb-1">📸 Posts</h6>
+                                <h3 class="mb-0" id="statPosts">0</h3>
+                                <small class="text-muted">Today</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center p-2 border-primary">
+                            <div class="card-body p-2">
+                                <h6 class="text-primary mb-1">👥 Follows</h6>
+                                <h3 class="mb-0" id="statFollows">0</h3>
+                                <small class="text-muted">Today</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center p-2 border-info">
+                            <div class="card-body p-2">
+                                <h6 class="text-info mb-1">💬 Comments</h6>
+                                <h3 class="mb-0" id="statComments">0</h3>
+                                <small class="text-muted">Today</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card text-center p-2 border-warning">
+                            <div class="card-body p-2">
+                                <h6 class="text-warning mb-1">⚡ Active</h6>
+                                <h3 class="mb-0" id="statActive">0</h3>
+                                <small class="text-muted">Workers</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Live Logs -->
                 <div class="card">
                     <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                         <span>📜 Live Action Log (Last 50 actions)</span>
-                        <button class="btn btn-sm btn-outline-light" onclick="fetchLogs()">🔄 Refresh</button>
+                        <div>
+                            <small id="lastUpdate" class="text-muted me-2"></small>
+                            <button class="btn btn-sm btn-outline-light" onclick="fetchLogs(); fetchStats();">🔄 Refresh</button>
+                        </div>
                     </div>
                     <div class="log-box" id="logBox">
-                        <div>Click Refresh to load actions...</div>
+                        <div class="text-muted">Loading actions...</div>
                     </div>
                 </div>
 
                 <!-- Recent Sessions -->
                 <div class="card">
-                    <div class="card-header">🕒 Recent Sessions (Last 50)</div>
+                    <div class="card-header">🕒 Recent Sessions (Last 50) - Click row for details</div>
                     <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                         <table class="table table-hover table-sm mb-0">
                             <thead>
@@ -148,7 +229,7 @@
                             </thead>
                             <tbody>
                                 {% for session in sessions %}
-                                <tr>
+                                <tr style="cursor: pointer;" onclick="showSessionDetails('{{ session.session_id }}')">
                                     <td><small>{{ session.time }}</small></td>
                                     <td><strong>{{ session.profile_name }}</strong></td>
                                     <td>
@@ -192,6 +273,25 @@
                                 {% endfor %}
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Session Details Modal -->
+    <div class="modal fade" id="sessionModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sessionModalTitle">Session Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="sessionModalBody">
+                    <div class="text-center">
+                        <div class="spinner-border" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -286,27 +386,237 @@
             }
         }
 
-        // Poll for Logs
+        // Poll for Logs with enhanced formatting
         async function fetchLogs() {
             try {
                 const res = await fetch('/api/logs');
                 const logs = await res.json();
                 const logBox = document.getElementById('logBox');
                 
-                if (logs.length === 0) return;
+                if (logs.length === 0) {
+                    logBox.innerHTML = '<div class="text-muted">No actions logged yet...</div>';
+                    return;
+                }
+
+                // Action type icons
+                const icons = {
+                    'post': '📸',
+                    'follow': '👥',
+                    'like': '❤️',
+                    'comment': '💬',
+                    'growth': '🌱'
+                };
 
                 logBox.innerHTML = logs.map(l => {
                     const time = new Date(l.time).toLocaleTimeString();
                     const colorClass = l.status === 'success' ? 'text-success' : (l.status === 'error' ? 'text-danger' : 'text-warning');
-                    return `<div><span class="text-secondary">[${time}]</span> <b>${l.profile.substring(0,6)}</b>: ${l.action} <span class="${colorClass}">(${l.status})</span> ${l.metadata ? '<span class="text-muted">'+l.metadata+'</span>' : ''}</div>`
+                    const statusIcon = l.status === 'success' ? '✅' : (l.status === 'error' ? '❌' : '⚠️');
+                    
+                    // Get action type for icon (split on arrow if present)
+                    const actionType = l.action.split(' ')[0].toLowerCase();
+                    const actionIcon = icons[actionType] || '🔹';
+                    
+                    return `<div style="padding: 4px 0; border-bottom: 1px solid #2a2a2a;">
+                        <span class="text-secondary">[${time}]</span> 
+                        <span>${actionIcon}</span>
+                        <b>${l.profile}</b>: ${l.action} 
+                        <span class="${colorClass}">${statusIcon}</span>
+                        ${l.metadata ? '<br><span class="text-muted" style="padding-left: 120px; font-size: 0.8em;">'+l.metadata+'</span>' : ''}
+                    </div>`;
                 }).join('');
             } catch(e) {
                 console.error(e);
             }
         }
-        // Manual refresh only - no auto-polling
-        // Call fetchLogs() once on page load to show initial data
+        // Photo Upload Functions
+        function previewPhoto(event) {
+            const file = event.target.files[0];
+            const uploadPostBtn = document.getElementById('uploadPostBtn');
+            const preview = document.getElementById('photoPreview');
+            const previewImage = document.getElementById('previewImage');
+            const uploadStatus = document.getElementById('uploadStatus');
+            
+            if (file) {
+                // Validate file type by extension (more reliable than MIME type)
+                const fileName = file.name.toLowerCase();
+                const validExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+                const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+                
+                if (!hasValidExtension) {
+                    alert('Invalid file type. Please select JPG, PNG, or WEBP image.');
+                    event.target.value = '';
+                    uploadPostBtn.disabled = true;
+                    preview.style.display = 'none';
+                    return;
+                }
+                
+                // Show preview
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    previewImage.src = e.target.result;
+                    preview.style.display = 'block';
+                    uploadPostBtn.disabled = false;
+                    uploadStatus.innerHTML = '';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                preview.style.display = 'none';
+                uploadPostBtn.disabled = true;
+            }
+        }
+
+        async function uploadAndPost() {
+            const fileInput = document.getElementById('photoInput');
+            const topicInput = document.getElementById('photoTopic');
+            const profileSelect = document.getElementById('profileSelect');
+            const uploadStatus = document.getElementById('uploadStatus');
+            const uploadPostBtn = document.getElementById('uploadPostBtn');
+            
+            if (!profileSelect.value) {
+                alert('Please select a profile first!');
+                return;
+            }
+            
+            if (!fileInput.files[0]) {
+                alert('Please select a photo first!');
+                return;
+            }
+            
+            if (!confirm('Upload and post this photo now?')) return;
+            
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('profile_id', profileSelect.value);
+            formData.append('topic', topicInput.value || '');
+            
+            try {
+                uploadPostBtn.disabled = true;
+                uploadStatus.innerHTML = '<span class="text-info">⏳ Uploading & Posting... This may take a minute...</span>';
+                
+                const response = await fetch('/api/upload_and_post', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    uploadStatus.innerHTML = '<span class="text-success">✅ ' + result.message + '</span>';
+                    // Clear inputs after success
+                    setTimeout(() => {
+                        fileInput.value = '';
+                        topicInput.value = '';
+                        document.getElementById('photoPreview').style.display = 'none';
+                        uploadPostBtn.disabled = true;
+                        uploadStatus.innerHTML = '';
+                        location.reload(); // Refresh to show new session
+                    }, 3000);
+                } else {
+                    uploadStatus.innerHTML = '<span class="text-danger">❌ ' + result.message + '</span>';
+                    uploadPostBtn.disabled = false;
+                }
+            } catch (err) {
+                uploadStatus.innerHTML = '<span class="text-danger">❌ Failed: ' + err + '</span>';
+                uploadPostBtn.disabled = false;
+            }
+        }
+
+        // Fetch and update statistics
+        async function fetchStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const stats = await res.json();
+                
+                document.getElementById('statPosts').textContent = stats.today.posts;
+                document.getElementById('statFollows').textContent = stats.today.follows;
+                document.getElementById('statComments').textContent = stats.today.comments;
+                document.getElementById('statActive').textContent = stats.active_workers;
+                
+                // Update last refresh time
+                const now = new Date().toLocaleTimeString();
+                document.getElementById('lastUpdate').textContent = `Updated: ${now}`;
+            } catch(e) {
+                console.error('Stats fetch failed:', e);
+                document.getElementById('lastUpdate').textContent = 'Update failed';
+            }
+        }
+
+        // Show session details in modal
+        async function showSessionDetails(sessionId) {
+            const modal = new bootstrap.Modal(document.getElementById('sessionModal'));
+            const modalBody = document.getElementById('sessionModalBody');
+            const modalTitle = document.getElementById('sessionModalTitle');
+            
+            // Show loading
+            modalBody.innerHTML = `<div class="text-center"><div class="spinner-border" role="status"></div><p>Loading session details...</p></div>`;
+            modal.show();
+            
+            try {
+                const res = await fetch(`/api/session/${sessionId}`);
+                const data = await res.json();
+                
+                if (data.status === 'error') {
+                    modalBody.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                    return;
+                }
+                
+                const session = data.session;
+                const actions = data.actions;
+                
+                // Build modal content based on session type
+                let content = `
+                    <div class="mb-3">
+                        <h6>Session Information</h6>
+                        <p><strong>Profile:</strong> ${session.profile_name || session.profile_id}</p>
+                        <p><strong>Started:</strong> ${session.started_at}</p>
+                        <p><strong>Ended:</strong> ${session.ended_at || 'N/A'}</p>
+                        <p><strong>Status:</strong> <span class="badge bg-${session.status === 'completed' ? 'success' : 'warning'}">${session.status}</span></p>
+                        <p><strong>Actions:</strong> ${session.actions_performed || 0}</p>
+                    </div>
+                    <hr>
+                    <h6>Actions Performed (${actions.length})</h6>
+                `;
+                
+                if (actions.length === 0) {
+                    content += '<p class="text-muted">No actions recorded</p>';
+                } else {
+                    content += '<div class="list-group">';
+                    actions.forEach(action => {
+                        const statusBadge = action.status === 'success' ? 'success' : 'danger';
+                        const icon = action.type === 'post' ? '📸' : action.type === 'follow' ? '👥' : action.type === 'comment' ? '💬' : action.type === 'like' ? '❤️' : '🔹';
+                        
+                        content += `
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="w-100">
+                                        <h6 class="mb-1">${icon} ${action.type.toUpperCase()}</h6>
+                                        ${action.target ? `<p class="mb-1"><strong>Target:</strong> ${action.target}</p>` : ''}
+                                        ${action.metadata.text ? `<p class="mb-1"><em>"${action.metadata.text}"</em></p>` : ''}
+                                        ${action.metadata.photo_filename ? `
+                                            <p class="mb-2">📷 ${action.metadata.photo_filename}</p>
+                                            <img src="/media/${action.metadata.photo_filename}" class="img-fluid rounded" style="max-width: 400px; max-height: 300px;" alt="Posted image">
+                                        ` : ''}
+                                    </div>
+                                    <span class="badge bg-${statusBadge}">${action.status}</span>
+                                </div>
+                                <small class="text-muted">${action.time}</small>
+                            </div>
+                        `;
+                    });
+                    content += '</div>';
+                }
+                
+                modalBody.innerHTML = content;
+                modalTitle.textContent = `Session: ${session.profile_name || 'Unknown'}`;
+                
+            } catch (err) {
+                modalBody.innerHTML = `<div class="alert alert-danger">Error loading session details: ${err}</div>`;
+            }
+        }
+
+        // Initial load only - manual refresh via button
         fetchLogs();
+        fetchStats();
     </script>
 </body>
 </html>

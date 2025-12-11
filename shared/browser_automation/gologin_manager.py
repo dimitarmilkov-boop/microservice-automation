@@ -167,15 +167,21 @@ class GoLoginManager:
                 chrome_options.add_argument("--disable-blink-features=AutomationControlled")
                 
                 # Use webdriver-manager to get matching ChromeDriver
-                # This automatically downloads the correct version for the browser
+                # For Orbita browser (GoLogin), try version 141 specifically
                 try:
-                    service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
+                    # Try to use ChromeDriver version 141.x for Orbita 141
+                    service = Service(ChromeDriverManager(driver_version="141").install())
                     driver = webdriver.Chrome(service=service, options=chrome_options)
-                except Exception as wdm_error:
-                    # Fallback: try without specifying chrome_type
-                    self.logger.warning(f"ChromeDriverManager with CHROMIUM failed, trying default: {wdm_error}")
-                    service = Service(ChromeDriverManager().install())
-                    driver = webdriver.Chrome(service=service, options=chrome_options)
+                except Exception as version_error:
+                    self.logger.warning(f"ChromeDriver 141 failed: {version_error}, trying auto-detect")
+                    try:
+                        service = Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install())
+                        driver = webdriver.Chrome(service=service, options=chrome_options)
+                    except Exception as wdm_error:
+                        # Final fallback: try without specifying chrome_type
+                        self.logger.warning(f"ChromeDriverManager with CHROMIUM failed, trying default: {wdm_error}")
+                        service = Service(ChromeDriverManager().install())
+                        driver = webdriver.Chrome(service=service, options=chrome_options)
                 
                 # Test connection
                 driver.current_url

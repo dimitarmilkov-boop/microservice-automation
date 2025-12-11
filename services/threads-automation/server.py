@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, BackgroundTasks, Form, HTTPException
+from fastapi import FastAPI, Request, BackgroundTasks, Form, HTTPException, UploadFile, File
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -15,6 +15,8 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from pydantic import BaseModel
+from pathlib import Path
+import shutil
 
 # Add project root to path
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../'))
@@ -36,6 +38,7 @@ else:
 from shared.browser_automation.browser_profiles import BrowserProfileManager
 from threads_growth_worker import ThreadsGrowthWorker
 from threads_comment_worker import ThreadsCommentWorker
+from threads_post_worker import ThreadsPostWorker
 from database import Database
 from config import Config
 
@@ -48,6 +51,7 @@ app = FastAPI(title="Threads Automation Service")
 # Mount Static & Templates
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+app.mount("/media", StaticFiles(directory=os.path.join(BASE_DIR, "media")), name="media")
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # Database
@@ -98,7 +102,7 @@ def scheduler_loop():
                         # Actually worker logs to engagement_log, here we just mark schedule as done
                         db.update_task_status(t_id, 'completed')
 
-                t = threading.Thread(target=task_wrapper, args=(pid, task['task_type'], task['id']))
+                t = threading.Thread(target=task_wrapper, args=(pid, task['task_type'], task['id']), daemon=True)
                 active_workers[pid] = t
                 t.start()
                 
@@ -183,15 +187,29 @@ async def read_root(request: Request):
     cursor = conn.cursor()
     cursor.execute("""
         SELECT id, profile_id, profile_name, started_at, ended_at, status, 
-               likes_performed, follows_performed, comments_performed, errors_count
+               likes_performed, follows_performed, comments_performed, 
+               errors_count, actions_performed
         FROM sessions ORDER BY started_at DESC LIMIT 50
     """)
     raw_sessions = cursor.fetchall()
+    
+    # Get posts count for each session from engagement_log
+    posts_by_session = {}
+    cursor.execute("""
+        SELECT session_id, COUNT(*) 
+        FROM engagement_log 
+        WHERE action_type = 'post' AND status = 'success'
+        GROUP BY session_id
+    """)
+    for row in cursor.fetchall():
+        posts_by_session[row[0]] = row[1]
+    
     conn.close()
     
     # Format sessions for UI
     sessions = []
     for s in raw_sessions:
+        session_id = s[0]
         profile_id = s[1]
         profile_name = s[2] or PROFILE_ID_TO_NAME.get(profile_id, profile_id[:8] if profile_id else "unknown")
         
@@ -199,9 +217,12 @@ async def read_root(request: Request):
         comments = s[8] or 0
         likes = s[6] or 0
         errors = s[9] or 0
+        posts = posts_by_session.get(session_id, 0)
         
         # Determine session type from what was performed
-        if follows > 0:
+        if posts > 0:
+            session_type = "Post"
+        elif follows > 0:
             session_type = "Growth"
         elif comments > 0:
             session_type = "Comment"
@@ -212,20 +233,26 @@ async def read_root(request: Request):
         
         # Build results string
         results_parts = []
+        if posts > 0:
+            results_parts.append(f"{posts} posts")
         if follows > 0:
             results_parts.append(f"{follows} follows")
         if likes > 0:
             results_parts.append(f"{likes} likes")
         if comments > 0:
             results_parts.append(f"{comments} comments")
-        results_str = " ".join(results_parts) if results_parts else "-"
+        if errors > 0:
+            results_parts.append(f"{errors} errors")
+        results_str = ", ".join(results_parts) if results_parts else "No actions"
         
         sessions.append({
+            "session_id": session_id,
             "time": s[3],  # started_at
             "profile_name": profile_name,
             "type": session_type,
             "status": s[5],  # status
             "results": results_str,
+            "posts": posts,
             "follows": follows,
             "comments": comments,
             "likes": likes,
@@ -270,7 +297,7 @@ async def run_growth(
             if pid in active_workers:
                 del active_workers[pid]
 
-    t = threading.Thread(target=worker_wrapper, args=(profile_id, target_username))
+    t = threading.Thread(target=worker_wrapper, args=(profile_id, target_username), daemon=True)
     active_workers[profile_id] = t
     t.start()
     
@@ -329,11 +356,143 @@ async def run_comment(
             if pid in active_workers:
                 del active_workers[pid]
 
-    t = threading.Thread(target=worker_wrapper, args=(profile_id,))
+    t = threading.Thread(target=worker_wrapper, args=(profile_id,), daemon=True)
     active_workers[profile_id] = t
     t.start()
     
     return {"status": "success", "message": f"Started Comment Worker for {profile_id}"}
+
+@app.post("/api/upload_photo")
+async def upload_photo(file: UploadFile = File(...)):
+    """Upload a photo to the media folder"""
+    try:
+        # Validate file extension
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.webp'}
+        file_ext = Path(file.filename).suffix.lower()
+        
+        if file_ext not in allowed_extensions:
+            return JSONResponse({
+                "status": "error", 
+                "message": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
+            }, status_code=400)
+        
+        # Create media folder if it doesn't exist
+        media_folder = Path(BASE_DIR) / "media"
+        media_folder.mkdir(exist_ok=True)
+        
+        # Generate unique filename (timestamp + original name)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_filename = f"{timestamp}_{file.filename}"
+        file_path = media_folder / safe_filename
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        logger.info(f"Photo uploaded: {safe_filename}")
+        return {
+            "status": "success", 
+            "message": f"Photo uploaded: {safe_filename}",
+            "filename": safe_filename
+        }
+        
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        return JSONResponse({
+            "status": "error",
+            "message": f"Upload failed: {str(e)}"
+        }, status_code=500)
+
+@app.post("/api/upload_and_post")
+async def upload_and_post(
+    file: UploadFile = File(...),
+    profile_id: str = Form(...),
+    topic: str = Form("")
+):
+    """Upload photo and immediately post it with topic hint"""
+    try:
+        # Validate file extension
+        allowed_extensions = {'.jpg', '.jpeg', '.png', '.webp'}
+        file_ext = Path(file.filename).suffix.lower()
+        
+        if file_ext not in allowed_extensions:
+            return JSONResponse({
+                "status": "error", 
+                "message": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}"
+            }, status_code=400)
+        
+        # Create media folder if it doesn't exist
+        media_folder = Path(BASE_DIR) / "media"
+        media_folder.mkdir(exist_ok=True)
+        
+        # Generate unique filename WITHOUT timestamp prefix to avoid confusion
+        # Just use original name with a random suffix to ensure uniqueness
+        import secrets
+        random_suffix = secrets.token_hex(4)
+        clean_name = Path(file.filename).stem
+        safe_filename = f"{clean_name}_{random_suffix}{file_ext}"
+        file_path = media_folder / safe_filename
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        logger.info(f"Photo uploaded for immediate post: {safe_filename}")
+        
+        # Start post worker in background with this specific photo and topic
+        if profile_id in active_workers and active_workers[profile_id].is_alive():
+            return JSONResponse({"status": "error", "message": "Worker already running for this profile"})
+
+        def worker_wrapper(pid, photo_name, topic_hint):
+            try:
+                worker = ThreadsPostWorker(pid, specific_photo=photo_name, topic_hint=topic_hint)
+                worker.start()
+            except Exception as e:
+                logger.error(f"Post worker failed: {e}")
+            finally:
+                if pid in active_workers:
+                    del active_workers[pid]
+
+        t = threading.Thread(target=worker_wrapper, args=(profile_id, safe_filename, topic), daemon=True)
+        active_workers[profile_id] = t
+        t.start()
+        
+        return {
+            "status": "success", 
+            "message": f"Photo uploaded and posting started!",
+            "filename": safe_filename
+        }
+        
+    except Exception as e:
+        logger.error(f"Upload and post failed: {e}")
+        return JSONResponse({
+            "status": "error",
+            "message": f"Failed: {str(e)}"
+        }, status_code=500)
+
+@app.post("/api/run_post")
+async def run_post(
+    background_tasks: BackgroundTasks,
+    profile_id: str = Form(...)
+):
+    if profile_id in active_workers and active_workers[profile_id].is_alive():
+        return JSONResponse({"status": "error", "message": "Worker already running for this profile"})
+
+    def worker_wrapper(pid):
+        try:
+            worker = ThreadsPostWorker(pid)
+            worker.start()
+        except Exception as e:
+            logger.error(f"Post worker failed: {e}")
+        finally:
+            if pid in active_workers:
+                del active_workers[pid]
+
+    t = threading.Thread(target=worker_wrapper, args=(profile_id,), daemon=True)
+    active_workers[profile_id] = t
+    t.start()
+    
+    return {"status": "success", "message": f"Started Post Worker for {profile_id}"}
 
 @app.post("/api/save_config")
 async def save_config(
@@ -350,6 +509,80 @@ async def save_config(
         return {"status": "success", "message": f"Saved {filename}"}
     except SyntaxError as e:
         return JSONResponse({"status": "error", "message": f"Syntax Error: {e}"}, status_code=400)
+
+@app.get("/api/stats")
+async def get_stats():
+    """Get overall statistics"""
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    
+    # Get today's stats
+    cursor.execute("""
+        SELECT 
+            SUM(follows_count) as total_follows,
+            SUM(likes_count) as total_likes,
+            SUM(comments_count) as total_comments,
+            SUM(posts_count) as total_posts
+        FROM daily_limits 
+        WHERE date = date('now')
+    """)
+    today_stats = cursor.fetchone()
+    
+    # Get active workers count
+    active_count = len([w for w in active_workers.values() if w.is_alive()])
+    
+    # Get total sessions today
+    cursor.execute("""
+        SELECT COUNT(*) 
+        FROM sessions 
+        WHERE date(started_at) = date('now')
+    """)
+    sessions_today = cursor.fetchone()[0]
+    
+    conn.close()
+    
+    return {
+        "today": {
+            "follows": today_stats[0] or 0,
+            "likes": today_stats[1] or 0,
+            "comments": today_stats[2] or 0,
+            "posts": today_stats[3] or 0,
+            "sessions": sessions_today
+        },
+        "active_workers": active_count
+    }
+
+@app.get("/api/session/{session_id}")
+async def get_session_details(session_id: str):
+    """Get detailed information about a specific session"""
+    try:
+        # Get session info
+        session_info = db.get_session_summary(session_id)
+        if not session_info:
+            return JSONResponse({"status": "error", "message": "Session not found"}, status_code=404)
+        
+        # Get all actions for this session
+        actions = db.get_session_actions(session_id)
+        
+        # Format actions with details
+        detailed_actions = []
+        for action in actions:
+            action_detail = {
+                "time": action["timestamp"],
+                "type": action["action_type"],
+                "target": action["target_username"] or action["target_url"],
+                "status": action["status"],
+                "metadata": json.loads(action["metadata"]) if action["metadata"] else {}
+            }
+            detailed_actions.append(action_detail)
+        
+        return {
+            "session": session_info,
+            "actions": detailed_actions
+        }
+    except Exception as e:
+        logger.error(f"Failed to get session details: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 @app.get("/api/logs")
 async def get_logs():
